@@ -19,7 +19,7 @@
 <title>POLYBIUS — Tower D21</title>
 <!--
 ======================================================================
-POLYBIUS — TOWER D21 — BUILD 12  (scan beams + tougher board)
+POLYBIUS — TOWER D21 — BUILD 13  (fair board + controller menus)
 The Counterfeit Ian Ackley Experience
 
 DROP THIS FILE NEXT TO YOUR SONG. Any of these names works:
@@ -29,56 +29,48 @@ DEPLOY NOTE: name this file index.html at the repo root (or /docs) and
 do NOT track the mp3 with Git LFS — GitHub Pages serves the LFS pointer
 file, not the audio, and the game would fall back to synth.
 
-NOTHING IN BUILD 11 WAS REWRITTEN. Every constant, the collision code,
-the tunnel rescue, the audio unlock and the one-tap coin boot are byte
-for byte what they were. Build 12 only ADDS three things.
+GAMEPLAY IS UNTOUCHED AGAIN. No physics constant, no beam constant, no
+collision line changed. Build 13 adds two things.
 
-1. SCAN BEAMS.
-   Cyan beams descend the shaft. They are pure hazard: they never touch
-   collision, platforms, cells or the camera, so they cannot break the
-   climb. Each one telegraphs first as a flashing 4 px marker across the
-   top of the screen for BEAM_WARN_FRAMES (42 frames, .7 s) in the exact
-   column it will occupy, then descends.
-     - Nothing spawns until BEAM_START_M (45 m), so the first stretch of
-       every run plays exactly like Build 11.
-     - Intensity rides the same min(peak/900,1) curve the platforms and
-       the wind already use, so it ramps with the run instead of jumping.
-       Spawn gap goes from about 2.5 s down to about 1 s, and fall speed
-       from .95 to 2.3 px per frame.
-     - A hit costs BEAM_DAMAGE (16) HP, drops the multiplier by .5 but
-       never below x1, plays the existing hurt tone and shows a BEAM
-       toast. BEAM_COOL_FRAMES (42) blocks further beam damage, so a
-       long beam drains slowly and a beam alone cannot one-shot a full
-       health bar — you have roughly four seconds inside one to escape.
-     - No beam damage at all while respawnFrames is running, so the
-       75-frame respawn blink is still safe.
-     - Beams are capped at BEAM_MAX (6), culled below the view, and
-       cleared on buildRun and respawn. Widths are 22-34 px against a
-       13 px player, so there is always a way past.
-   To retune, only these need touching: BEAM_START_M, BEAM_MAX,
-   BEAM_DAMAGE, BEAM_COOL_FRAMES, BEAM_WARN_FRAMES, BEAM_W_MIN/MAX and
-   the two lines in updateBeams() that set the gap and the speed.
+1. THE BOARD NOW MATCHES THE BEAMS.
+   Build 12 raised the defaults to 34000 / 22500 / 14000, which was set
+   against pre-beam scores and turned out to be unreachable. They are now
+   T.S.SPECTRE 7367, ALI3N LEE 5240, K.HALLORAN 3480 — a 5000-point climb
+   lands third, and the dossier is in range again.
+   The key moved to pb_board12 so the new numbers actually install over
+   anything saved under pb_board11. YOU rows from pb_board11, pb_board8
+   and pb_board7 are all migrated in and re-sorted, so no record is lost.
+   Your best score still lives in pb_best8 and is untouched.
 
-2. THE DEFAULT BOARD WAS RAISED FOR A 29,000 CLIMBER.
-   T.S.SPECTRE 34000, ALI3N LEE 22500, K.HALLORAN 14000, up from
-   4200 / 2400 / 1150. The board key moved to pb_board11 so the harder
-   defaults actually install, and any YOU rows saved under pb_board8 or
-   pb_board7 are migrated in and re-sorted, so your own records are not
-   lost. Your best score still lives in pb_best8 and is untouched.
+2. EVERY END-SCREEN BUTTON IS NOW CONTROLLER AND KEYBOARD NAVIGABLE,
+   INCLUDING THE YOUTUBE LINK.
+   Before this, a pad press on the dossier called startGame() and blew
+   past the file entirely, so a controller could never reach the link.
+   Now the menu screens carry a focus ring:
+     - D-pad up/down or the left stick moves the ring. Arrow keys do the
+       same on a keyboard.
+     - A / cross, Enter or space activates the focused item.
+     - Default focus is the item the old build already triggered, so a
+       single A press still means PRESS START on the board screen and
+       RESUME on the pause screen. Nothing anyone already does changes.
+   Focus order — dossier: VIEW THE COMPLETE FILE, the youtube.com link,
+   COPY MY RECORD, BACK TO THE BOARD. Board screen: PRESS START, the
+   safety-net link when it is showing, SOUND, SKY, DIAGNOSTICS. Pause:
+   RESUME, END RUN.
+   The link is styled as a button on the board screen and both link items
+   sit in the ring, so win or lose it is reachable by pad, key, mouse or
+   thumb. A gamepad press is not a browser user gesture, so a pad-opened
+   link navigates this tab instead of trying a popup that would be
+   blocked; mouse and touch still open a new tab as before.
 
-3. A SAFETY NET THAT STILL CARRIES THE LINK.
-   With a harder board, a short run no longer reaches the top-three
-   dossier, which was the only place the channel link appeared. A run
-   that misses the board now shows a small note under the high scores
-   with the score and a live youtube.com/@x-ackley link. No lecture, no
-   tutorial pitch — it reads as part of the broadcast. The dossier and
-   its top-three trigger are unchanged.
-
-The instructions line gained one sentence about the beams. Nothing else
-on any screen was reworded.
+CARRIED FORWARD FROM BUILD 12: scan beams from 45 m, ramping on the same
+min(peak/900,1) curve, telegraphed for 42 frames, 16 HP per hit with a
+42-frame cooldown, capped at 6, cleared on respawn, and never consulted
+by collision. Safety-net note with the score and link for a run that
+misses the board.
 
 Press 0 or the DIAGNOSTICS button. PASSTHRU and RESCUED must both stay
-at 0; beams shows how many are live.
+at 0; beams and hits show the hazard state.
 ======================================================================
 -->
 <style>
@@ -133,9 +125,11 @@ canvas{position:absolute;inset:0;display:block;touch-action:none}
 #netNote{display:none;width:min(300px,92vw);margin:11px 0 0;padding:9px 10px;border:1px solid #2b4356;background:rgba(9,16,24,.9);font-size:9px;letter-spacing:2px;line-height:1.9;color:#6f8697;-webkit-user-select:text;user-select:text}
 #netNote.on{display:block}
 #netNote b{display:block;color:#8ce8ff;font-weight:900;font-size:11px;letter-spacing:1px}
-#netNote a{color:var(--cyan);text-decoration:underline}
+.linkButton{display:block;width:100%;margin-top:8px;padding:12px 8px;border:1px solid #2b4356;background:transparent;color:var(--cyan);font-size:10px;font-weight:900;letter-spacing:2px;text-align:center;text-decoration:none;touch-action:manipulation}
 .primary{margin-top:14px;padding:16px 44px;border:0;border-radius:4px;background:var(--cyan);color:#03151d;font-weight:900;letter-spacing:2px;touch-action:manipulation}
 .secondary{margin-top:10px;padding:10px 18px;border:1px solid #334056;border-radius:4px;background:transparent;color:#8ce8ff;font-size:9px;font-weight:800;letter-spacing:2px;touch-action:manipulation}
+/* BUILD 13: the focus ring the pad and the arrow keys move */
+.focus{outline:2px solid var(--gold);outline-offset:2px}
 #credit{font-size:8px;color:var(--green);letter-spacing:3px;margin-top:11px}
 #blink{font-size:9px;color:var(--gold);letter-spacing:3px;margin-top:7px;animation:blink 1s steps(2,end) infinite}@keyframes blink{50%{opacity:0}}
 #pauseTitle{font-size:16px;letter-spacing:6px;color:var(--cyan)}
@@ -150,7 +144,7 @@ canvas{position:absolute;inset:0;display:block;touch-action:none}
 .seal{text-align:center;color:#85ffa3;font-size:8px;letter-spacing:3px}.agency{text-align:center;color:#e4f3e5;font-size:11px;letter-spacing:2px;font-weight:900;margin-top:4px}.division{text-align:center;color:#557354;font-size:7px;letter-spacing:2px;margin-top:3px}.rule{border-top:1px solid #253723;margin:10px 0}.meta{display:flex;justify-content:space-between;color:#668365;font-size:8px;letter-spacing:1px;margin:3px 0}.meta b{color:#a8dca8;font-weight:400}.fileHead{font-size:9px;letter-spacing:2px;color:#85ffa3;margin:13px 0 7px}.recordBox{text-align:center;border:1px solid #376333;padding:12px;background:#0c170b}.recordScore{font-size:36px;font-weight:900;color:#c4ffd2}.recordLabel{font-size:8px;color:#587457;letter-spacing:3px}.recordGrid{display:flex;justify-content:center;gap:24px;margin-top:10px}.recordVal{font-size:14px;color:#9effb5;font-weight:900}.recordKey{font-size:7px;color:#587457;letter-spacing:2px}.bodyCopy{font-size:10.5px;line-height:1.7;color:#b7cab7}.bodyCopy em{color:#85ffa3;font-style:normal}.fileButton{width:100%;padding:14px 10px;margin-top:11px;border:1px solid #376333;background:transparent;color:#9effb5;font-size:10px;font-weight:900;letter-spacing:2px;touch-action:manipulation}.fileButton.main{background:#85ffa3;color:#06170a}
 .recordLink{margin-top:10px;text-align:center;font-size:9px;letter-spacing:2px;color:#587457;line-height:1.8;-webkit-user-select:text;user-select:text}
 .recordLink b{display:block;color:#c4ffd2;font-weight:900;font-size:10px;letter-spacing:1px;margin-bottom:4px}
-.recordLink a{color:#9effb5;text-decoration:underline}
+.recordLink a{display:inline-block;padding:6px 8px;color:#9effb5;text-decoration:underline}
 @media(pointer:coarse),(hover:none){#mobilePads{display:block}}
 body.touch #mobilePads{display:block}
 </style>
@@ -172,7 +166,7 @@ body.touch #mobilePads{display:block}
   <div id="logo">POLY<b>BIUS</b></div><div id="subtitle">TOWER — 3 LIVES</div><div id="nowPlaying">&nbsp;</div>
   <div id="instructions">The tower does not end. Climb until your lives run out.<br>Every metre scores. <span class="cyan">Blue cells</span> raise your multiplier.<br><span class="green">Green ledges</span> bank it. Watch the wind.<br><span class="cyan">Scan beams</span> fall from above. Do not be standing in one.</div>
   <div id="board"><div id="boardHead">HIGH SCORES</div><div id="rows"></div></div>
-  <div id="netNote"><b id="netScore">SCORE 0</b>THE BROADCAST DID NOT LOG THIS CLIMB. IT IS STILL RUNNING:<br><a id="netLink" href="https://youtube.com/@x-ackley" target="_blank" rel="noopener">youtube.com/@x-ackley</a></div>
+  <div id="netNote"><b id="netScore">SCORE 0</b>THE BROADCAST DID NOT LOG THIS CLIMB. IT IS STILL RUNNING:<a id="netLink" class="linkButton" data-nav="link" href="https://youtube.com/@x-ackley" target="_blank" rel="noopener">youtube.com/@x-ackley</a></div>
   <button id="startButton" class="primary">PRESS START</button>
   <button id="soundButton" class="secondary">SOUND: ON</button>
   <button id="skyButton" class="secondary">SKY: FLASHER</button>
@@ -188,9 +182,9 @@ body.touch #mobilePads{display:block}
   <div class="seal">★ ★ ★</div><div class="agency">FEDERAL BUREAU OF INVESTIGATION</div><div class="division">CYBER DIVISION — ANOMALOUS BROADCAST UNIT</div><div class="rule"></div>
   <div class="meta"><span>CASE FILE</span><b id="caseNo">21-D-0413</b></div><div class="meta"><span>CLASSIFICATION</span><b>CONFIDENTIAL // NOFORN</b></div><div class="meta"><span>RECRUITED ASSET</span><b id="rankText">RANK 3</b></div>
   <div class="fileHead">CLIMB RECORD — VERIFIED</div><div class="recordBox"><div id="finalScore" class="recordScore">0</div><div class="recordLabel">POINTS</div><div class="recordGrid"><div><div id="finalAlt" class="recordVal">0 M</div><div class="recordKey">ALTITUDE</div></div><div><div id="finalMult" class="recordVal">x1.0</div><div class="recordKey">BEST MULT</div></div><div><div id="finalRank" class="recordVal">1 / 5</div><div class="recordKey">RANK</div></div></div>
-  <div class="recordLink"><b id="linkScore">SCORE 0</b><a id="fileLink" href="https://youtube.com/@x-ackley" target="_blank" rel="noopener">youtube.com/@x-ackley</a></div></div>
+  <div class="recordLink"><b id="linkScore">SCORE 0</b><a id="fileLink" data-nav="link" href="https://youtube.com/@x-ackley" target="_blank" rel="noopener">youtube.com/@x-ackley</a></div></div>
   <div class="fileHead">NOTICE OF SELECTION</div><div class="bodyCopy">Your session was logged and flagged by an automated review process you were not informed of. You climbed far enough to matter.<br><br>The subject is designated <em>THE COUNTERFEIT</em>. Every recovered identity was a forgery of someone who never existed. A pirate broadcast follows him, carrying the attract tone of this cabinet.<br><br>Three unrelated systems produced the same phrase: <em>INSERT COINS, INVERT MINDS</em>.</div>
-  <button id="openFile" class="fileButton main">▶ VIEW THE COMPLETE FILE</button><button id="copyRecord" class="fileButton">COPY MY RECORD</button><button id="backButton" class="fileButton">◀ BACK TO THE BOARD</button>
+  <button id="openFile" class="fileButton main" data-nav="link">▶ VIEW THE COMPLETE FILE</button><button id="copyRecord" class="fileButton">COPY MY RECORD</button><button id="backButton" class="fileButton">◀ BACK TO THE BOARD</button>
 </div></section>
 
 <script>
@@ -234,14 +228,14 @@ const DAMAGE_LIGHT=3.6;
 const DAMAGE_HEAVY=5.4;
 const DAMAGE_FATAL=7.2;
 
-/* BUILD 12: raised for a 29,000 climber */
-const DEFAULT_BOARD=[{n:'T.S.SPECTRE',s:34000},{n:'ALI3N LEE',s:22500},{n:'K.HALLORAN',s:14000}];
+/* BUILD 13: retuned for post-beam scores — 5000 lands third */
+const DEFAULT_BOARD=[{n:'T.S.SPECTRE',s:7367},{n:'ALI3N LEE',s:5240},{n:'K.HALLORAN',s:3480}];
 
 /* ---------------- DOM ---------------- */
 const $=id=>document.getElementById(id);
 const canvas=$('game');
 const ctx=canvas.getContext('2d',{alpha:false});
-const ui={attract:$('attract'),start:$('start'),pause:$('pause'),dossier:$('dossier'),hud:$('hud'),score:$('score'),best:$('best'),lives:$('lives'),mult:$('mult'),hp:$('hpFill'),wind:$('wind'),coin:$('coin'),status:$('attractStatus'),padPrompt:$('padPrompt'),now:$('nowPlaying'),rows:$('rows'),netNote:$('netNote'),netScore:$('netScore'),startButton:$('startButton'),soundButton:$('soundButton'),skyButton:$('skyButton'),diagButton:$('diagButton'),pauseTop:$('pauseTop'),pauseStats:$('pauseStats'),resume:$('resumeButton'),quit:$('quitButton'),toast:$('toast'),blink:$('blink'),diag:$('diag')};
+const ui={attract:$('attract'),start:$('start'),pause:$('pause'),dossier:$('dossier'),hud:$('hud'),score:$('score'),best:$('best'),lives:$('lives'),mult:$('mult'),hp:$('hpFill'),wind:$('wind'),coin:$('coin'),status:$('attractStatus'),padPrompt:$('padPrompt'),now:$('nowPlaying'),rows:$('rows'),netNote:$('netNote'),netScore:$('netScore'),netLink:$('netLink'),startButton:$('startButton'),soundButton:$('soundButton'),skyButton:$('skyButton'),diagButton:$('diagButton'),pauseTop:$('pauseTop'),pauseStats:$('pauseStats'),resume:$('resumeButton'),quit:$('quitButton'),toast:$('toast'),blink:$('blink'),diag:$('diag'),openFile:$('openFile'),fileLink:$('fileLink'),copyRecord:$('copyRecord'),backButton:$('backButton')};
 
 let W=320,H=560,DPR=1;
 function resize(){W=innerWidth||320;H=innerHeight||560;DPR=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(W*DPR);canvas.height=Math.round(H*DPR);canvas.style.width=W+'px';canvas.style.height=H+'px';ctx.setTransform(DPR,0,0,DPR,0,0)}
@@ -277,22 +271,59 @@ const held=k=>keys[k]||padKeys[k]||touchKeys[k];
 /* ---------------- STORAGE ---------------- */
 function loadInt(k,d){try{const n=parseInt(localStorage.getItem(k),10);return Number.isFinite(n)?n:d}catch(e){return d}}
 function save(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+function readRows(k){try{return cleanRows(JSON.parse(localStorage.getItem(k)||'null'))}catch(e){return []}}
 function cleanRows(a){return Array.isArray(a)?a.filter(o=>o&&typeof o.n==='string'&&Number.isFinite(o.s)&&o.s>=0).map(o=>({n:o.n.slice(0,14),s:Math.floor(o.s)})):[]}
-/* BUILD 12: pb_board11 holds the harder defaults; YOU rows from the old
-   keys are migrated in so nobody loses a record. */
+/* BUILD 13: pb_board12 holds the retuned defaults; YOU rows from every
+   older key are migrated in so nobody loses a record. */
 function loadBoard(){
-  try{
-    const cur=cleanRows(JSON.parse(localStorage.getItem('pb_board11')||'null'));
-    if(cur.length)return cur.sort((x,y)=>y.s-x.s).slice(0,5);
-    const old=cleanRows(JSON.parse(localStorage.getItem('pb_board8')||localStorage.getItem('pb_board7')||'null'));
-    const mine=old.filter(o=>o.n==='YOU');
-    return DEFAULT_BOARD.map(o=>({...o})).concat(mine).sort((x,y)=>y.s-x.s).slice(0,5);
-  }catch(e){}
-  return DEFAULT_BOARD.map(o=>({...o}));
+  const cur=readRows('pb_board12');
+  if(cur.length)return cur.sort((x,y)=>y.s-x.s).slice(0,5);
+  const mine=readRows('pb_board11').concat(readRows('pb_board8'),readRows('pb_board7')).filter(o=>o.n==='YOU');
+  return DEFAULT_BOARD.map(o=>({...o})).concat(mine).sort((x,y)=>y.s-x.s).slice(0,5);
 }
-function saveBoard(){save('pb_board11',JSON.stringify(board))}
+function saveBoard(){save('pb_board12',JSON.stringify(board))}
 function escapeHTML(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function drawBoard(mark=-1){ui.rows.innerHTML=board.map((o,i)=>`<div class="row ${i===mark?'you':''}"><span>${i+1}</span><span>${escapeHTML(o.n)}</span><span>${o.s}</span></div>`).join('')}
+
+/* ---------------- MENU FOCUS (BUILD 13) ----------------
+   A focus ring the pad and the arrow keys move. Default focus is always
+   the item the old build activated, so one A press behaves as before. */
+let navItems=[],navIndex=0;
+function menuOpen(){return ui.dossier.classList.contains('on')||ui.start.classList.contains('on')||ui.pause.classList.contains('on')}
+function paintNav(){
+  navItems.forEach((el,i)=>el.classList.toggle('focus',i===navIndex));
+  const el=navItems[navIndex];
+  if(el&&el.scrollIntoView){try{el.scrollIntoView({block:'nearest'})}catch(e){}}
+}
+function setNav(items){
+  clearNav();
+  navItems=items.filter(el=>el&&el.offsetParent!==null);
+  navIndex=0;
+  paintNav();
+}
+function clearNav(){navItems.forEach(el=>el.classList.remove('focus'));navItems=[];navIndex=0}
+function navMove(d){
+  if(navItems.length<2)return;
+  navIndex=(navIndex+d+navItems.length)%navItems.length;
+  paintNav();
+  tone(660,.04,'square',.09);
+}
+/* a pad press is not a browser user gesture, so a popup would be blocked;
+   navigate this tab instead. Mouse and touch keep the new tab. */
+function openChannel(newTab){
+  if(newTab){const w=window.open(COMPLETE_FILE_URL,'_blank','noopener');if(w)return}
+  location.href=COMPLETE_FILE_URL;
+}
+function navActivate(){
+  const el=navItems[navIndex];
+  if(!el)return false;
+  if(el.dataset&&el.dataset.nav==='link'){openChannel(false);return true}
+  el.click();
+  return true;
+}
+function navStart(){setNav([ui.startButton,ui.netNote.classList.contains('on')?ui.netLink:null,ui.soundButton,ui.skyButton,ui.diagButton])}
+function navDossier(){setNav([ui.openFile,ui.fileLink,ui.copyRecord,ui.backButton])}
+function navPause(){setNav([ui.resume,ui.quit])}
 
 /* ---------------- SCREENS ---------------- */
 function showScreen(name){for(const n of ['attract','start','pause','dossier'])ui[n].classList.toggle('on',n===name)}
@@ -437,7 +468,6 @@ function tone(f,d=.1,type='square',vol=.16,end=0){
   o.connect(g).connect(sfxGain);o.start(t);o.stop(t+d+.03);
 }
 const sfx={coin(){tone(1245,.05,'square',.23);setTimeout(()=>tone(988,.06,'square',.2),60);setTimeout(()=>tone(1319,.18,'square',.2),130)},boot(){[196,262,330,392,523].forEach((f,i)=>setTimeout(()=>tone(f,.14,'square',.17),i*70))},jump(){tone(330,.13,'square',.15,620)},land(){tone(120,.055,'triangle',.1,72)},hurt(){tone(220,.2,'sawtooth',.23,90)},cell(){tone(720,.08,'square',.18);setTimeout(()=>tone(1080,.1,'square',.15),65)},bank(){[523,659,784,1047].forEach((f,i)=>setTimeout(()=>tone(f,.12,'triangle',.16),i*55))},life(){tone(440,.14,'square',.2,220)},over(){[392,330,262,196].forEach((f,i)=>setTimeout(()=>tone(f,.24,'triangle',.2),i*150))},pause(){tone(392,.1,'square',.14,300)},resume(){tone(523,.1,'square',.15,700)},
-/* BUILD 12: a short descending sweep when a beam is telegraphed */
 beam(){tone(1480,.09,'sawtooth',.10,520)}};
 function setMix(v){
   if(master&&AC)master.gain.setTargetAtTime(soundOn?v:0,AC.currentTime,.05);
@@ -495,7 +525,15 @@ function bootIntoRun(){
   setState('start');
   startGame();
 }
-function showStartScreen(){releaseInputs();setState('start');showScreen('start');setMix(.42);drawBoard();ui.netNote.classList.remove('on');ui.startButton.textContent='PRESS START';ui.blink.textContent='PRESS START';ui.skyButton.textContent=['SKY: FLASHER','SKY: CALM','SKY: PLAIN'][skyMode];ui.soundButton.textContent='SOUND: '+(soundOn?'ON':'OFF');if(ui.now.textContent.trim()==='')say(trackPlaying?'♪ '+TRACK_TITLE:'♪ SYNTH RHYTHM ACTIVE',ui.now)}
+function showStartScreen(){
+  releaseInputs();setState('start');showScreen('start');setMix(.42);drawBoard();
+  ui.netNote.classList.remove('on');
+  ui.startButton.textContent='PRESS START';ui.blink.textContent='PRESS START';
+  ui.skyButton.textContent=['SKY: FLASHER','SKY: CALM','SKY: PLAIN'][skyMode];
+  ui.soundButton.textContent='SOUND: '+(soundOn?'ON':'OFF');
+  if(ui.now.textContent.trim()==='')say(trackPlaying?'♪ '+TRACK_TITLE:'♪ SYNTH RHYTHM ACTIVE',ui.now);
+  navStart();
+}
 
 /* ---------------- LEVEL ---------------- */
 function addPlatform(){
@@ -523,7 +561,7 @@ function buildRun(){
   diagStats.landings=0;diagStats.passthru=0;diagStats.rescues=0;diagStats.maxSub=0;diagStats.maxVy=0;diagStats.deaths=0;diagStats.beamHits=0;
   makeShapes();updateHUD();
 }
-function startGame(){if(state!=='start'&&state!=='dead')return;nudgeAudio();buildRun();showScreen('none');setState('play');setMix(.62);accumulator=0;lastTime=performance.now()}
+function startGame(){if(state!=='start'&&state!=='dead')return;clearNav();nudgeAudio();buildRun();showScreen('none');setState('play');setMix(.62);accumulator=0;lastTime=performance.now()}
 
 /* ---------------- SCAN BEAMS (BUILD 12) ----------------
    Hazard only. Beams are never consulted by collision, so they cannot
@@ -735,8 +773,8 @@ function simulate(){
 }
 
 /* ---------------- PAUSE / END ---------------- */
-function pauseGame(){if(state!=='play')return;releaseInputs();setState('paused');showScreen('pause');ui.pauseStats.innerHTML=`SCORE <b>${Math.floor(score)}</b><br>BEST <b>${Math.max(bestScore,Math.floor(score))}</b><br>ALTITUDE <b>${Math.floor(peak)} M</b><br>MULTIPLIER <b>x${multiplier.toFixed(1)}</b><br>LIVES <b>${lives}</b>`;setMix(.22);sfx.pause()}
-function resumeGame(){if(state!=='paused')return;releaseInputs();nudgeAudio();showScreen('none');setState('play');setMix(.62);accumulator=0;lastTime=performance.now();sfx.resume()}
+function pauseGame(){if(state!=='play')return;releaseInputs();setState('paused');showScreen('pause');ui.pauseStats.innerHTML=`SCORE <b>${Math.floor(score)}</b><br>BEST <b>${Math.max(bestScore,Math.floor(score))}</b><br>ALTITUDE <b>${Math.floor(peak)} M</b><br>MULTIPLIER <b>x${multiplier.toFixed(1)}</b><br>LIVES <b>${lives}</b>`;setMix(.22);sfx.pause();navPause()}
+function resumeGame(){if(state!=='paused')return;clearNav();releaseInputs();nudgeAudio();showScreen('none');setState('play');setMix(.62);accumulator=0;lastTime=performance.now();sfx.resume()}
 function endRun(){if(state!=='paused')return;showStartScreen();setState('start')}
 function gameOver(){
   if(state==='dead')return;
@@ -757,9 +795,10 @@ function gameOver(){
     drawBoard(rank-1);
     /* BUILD 12: safety net — the link still reaches a climber who missed */
     ui.netScore.textContent='SCORE '+final+(final>oldBest?' — NEW PERSONAL BEST':'');
-    $('netLink').href=COMPLETE_FILE_URL;
-    $('netLink').textContent=COMPLETE_FILE_URL.replace(/^https?:\/\//,'');
+    ui.netLink.href=COMPLETE_FILE_URL;
+    ui.netLink.textContent=COMPLETE_FILE_URL.replace(/^https?:\/\//,'');
     ui.netNote.classList.add('on');
+    navStart();                          /* BUILD 13: the link joins the ring */
   }
 }
 function showDossier(r){
@@ -771,9 +810,9 @@ function showDossier(r){
   $('rankText').textContent='RANK '+(r.rank>0?r.rank:'—')+' OF '+r.of;
   $('caseNo').textContent=caseNumber(r.score,r.rank||r.of);
   $('linkScore').textContent='SCORE '+r.score+(r.newBest?' — NEW PERSONAL BEST':'');
-  const link=$('fileLink');
-  link.href=COMPLETE_FILE_URL;
-  link.textContent=COMPLETE_FILE_URL.replace(/^https?:\/\//,'');
+  ui.fileLink.href=COMPLETE_FILE_URL;
+  ui.fileLink.textContent=COMPLETE_FILE_URL.replace(/^https?:\/\//,'');
+  navDossier();                          /* BUILD 13: pad can reach the file */
 }
 function caseNumber(s,r){const seed=s+4139;return String(21+seed%4)+'-'+String.fromCharCode(65+seed%7)+'-'+('000'+seed%10000).slice(-4)+'/'+r}
 function copyRecord(){
@@ -781,7 +820,7 @@ function copyRecord(){
   const r=lastRecord;
   const rankLine=r.rank>0?`RANK ${r.rank} OF ${r.of} ON THIS CABINET\n`:'';
   const text=`POLYBIUS — TOWER D21\nSCORE ${r.score} | ALTITUDE ${r.alt} M | BEST MULT x${r.mult}\n${rankLine}${r.newBest?'*** NEW PERSONAL BEST ***\n':''}Beat it: ${COMPLETE_FILE_URL}`;
-  const b=$('copyRecord');
+  const b=ui.copyRecord;
   const done=ok=>{b.textContent=ok?'✓ RECORD COPIED':'COPY BLOCKED';setTimeout(()=>b.textContent='COPY MY RECORD',1500)};
   if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(()=>done(true)).catch(()=>fallbackCopy(text,done));
   else fallbackCopy(text,done);
@@ -934,9 +973,9 @@ bindButton(ui.quit,endRun);
 bindButton(ui.soundButton,toggleSound);
 bindButton(ui.skyButton,()=>{skyMode=(skyMode+1)%3;ui.skyButton.textContent=['SKY: FLASHER','SKY: CALM','SKY: PLAIN'][skyMode]});
 bindButton(ui.diagButton,toggleDiag);
-bindButton($('backButton'),showStartScreen);
-bindButton($('copyRecord'),copyRecord);
-bindButton($('openFile'),()=>window.open(COMPLETE_FILE_URL,'_blank','noopener'));
+bindButton(ui.backButton,showStartScreen);
+bindButton(ui.copyRecord,copyRecord);
+bindButton(ui.openFile,()=>openChannel(true));
 function toggleDiag(){diagOn=!diagOn;ui.diagButton.textContent='DIAGNOSTICS: '+(diagOn?'ON':'OFF');ui.diag.classList.toggle('on',diagOn&&(state==='play'||state==='paused'))}
 
 /* FIX 9: show the pads on any device that reports a real touch */
@@ -961,6 +1000,12 @@ document.addEventListener('keydown',e=>{
   if(k==='0'){e.preventDefault();toggleDiag();return}
   if(k==='m'||k==='M'){e.preventDefault();toggleSound();return}
   if((k==='p'||k==='P'||k==='Escape')&&(state==='play'||state==='paused')){e.preventDefault();state==='play'?pauseGame():resumeGame();return}
+  /* BUILD 13: arrow keys move the ring on a menu, Enter/space activates */
+  if(menuOpen()&&navItems.length){
+    if(k==='ArrowUp'||k==='ArrowLeft'){e.preventDefault();navMove(-1);return}
+    if(k==='ArrowDown'||k==='ArrowRight'){e.preventDefault();navMove(1);return}
+    if(k===' '||k==='Enter'){e.preventDefault();navActivate();return}
+  }
   if(state==='attract'&&(k===' '||k==='Enter')){e.preventDefault();insertCoin();return}
   if((state==='start'||state==='dead')&&(k===' '||k==='Enter')){e.preventDefault();startGame();return}
   if(state==='paused'&&(k===' '||k==='Enter')){e.preventDefault();resumeGame();return}
@@ -976,7 +1021,7 @@ document.addEventListener('keyup',e=>{
   if(k===' '||k==='ArrowUp'||k==='w'||k==='W')keys.jump=false;
 });
 
-let padPrev=false,padPausePrev=false,padPromptUntil=0;
+let padPrev=false,padPausePrev=false,padNavPrev=0,padPromptUntil=0;
 function pollGamepad(now){
   if(!navigator.getGamepads)return;
   let gp;try{gp=Array.from(navigator.getGamepads()).find(Boolean)}catch(err){return}
@@ -996,8 +1041,19 @@ function pollGamepad(now){
   }else{
     padKeys.left=padKeys.right=padKeys.jump=false;
   }
+  /* BUILD 13: on a menu the stick and the d-pad move the focus ring */
+  const menu=menuOpen()&&navItems.length>0&&state!=='play';
+  if(menu){
+    const axisY=(gp.axes&&gp.axes[1])||0;
+    const dir=(standard&&btn(13))||axisY>.5?1:((standard&&btn(12))||axisY<-.5?-1:0);
+    if(dir&&dir!==padNavPrev)navMove(dir);
+    padNavPrev=dir;
+  }else{
+    padNavPrev=0;
+  }
   if(confirm&&!padPrev){
     if(state==='attract'){padPromptUntil=now+10;ui.coin.classList.add('hint')}
+    else if(menu)navActivate();
     else if(state==='start'||state==='dead')startGame();
     else if(state==='paused')resumeGame();
   }
@@ -1029,10 +1085,10 @@ function loop(t){
 /* ---------------- BOOT ---------------- */
 ui.best.textContent='BEST '+bestScore;
 drawBoard();
-$('fileLink').href=COMPLETE_FILE_URL;
-$('fileLink').textContent=COMPLETE_FILE_URL.replace(/^https?:\/\//,'');
-$('netLink').href=COMPLETE_FILE_URL;
-$('netLink').textContent=COMPLETE_FILE_URL.replace(/^https?:\/\//,'');
+ui.fileLink.href=COMPLETE_FILE_URL;
+ui.fileLink.textContent=COMPLETE_FILE_URL.replace(/^https?:\/\//,'');
+ui.netLink.href=COMPLETE_FILE_URL;
+ui.netLink.textContent=COMPLETE_FILE_URL.replace(/^https?:\/\//,'');
 showScreen('attract');
 setState('attract');
 requestAnimationFrame(loop);
