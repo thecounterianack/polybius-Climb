@@ -4,105 +4,98 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="POLYBIUS">
 <meta name="theme-color" content="#05060a">
+<meta name="description" content="POLYBIUS — TOWER D21. An endless arcade climb scored to INSERT COINS, INVERT MINDS. The Counterfeit Ian Ackley Experience.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="POLYBIUS — TOWER D21">
+<meta property="og:description" content="Insert coin. Climb the tower. The cabinet remembers your score.">
+<meta property="og:url" content="https://youtube.com/@x-ackley">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="POLYBIUS — TOWER D21">
+<meta name="twitter:description" content="Insert coin. Climb the tower. The cabinet remembers your score.">
 <title>POLYBIUS — Tower D21</title>
 <!--
 ======================================================================
-POLYBIUS — TOWER D21 — BUILD 8
+POLYBIUS — TOWER D21 — BUILD 11  (no falling through ledges)
 The Counterfeit Ian Ackley Experience
-======================================================================
-Put this file and Song.mp3 in the same folder. Filenames are case
-sensitive on GitHub Pages. If yours is song.mp3 lowercase, change
-TRACK_FILE below.
 
-Build 8 = build 7's structure and collision, with four fixes.
+DROP THIS FILE NEXT TO YOUR SONG. Any of these names works:
+  Song.mp3   song.mp3   SONG.mp3
+Commit it as Song.mp3 so the first attempt succeeds and the sky is
+driven by the analyser instead of the synth scheduler.
 
-Build 7's substepped collision is kept EXACTLY as it was. It is the
-right solution and it verified clean: 40,000 simulated steps across
-three seeds produced ZERO missed landings. Nothing about the movement
-model was touched.
+DEPLOY NOTE: name this file index.html at the repo root (or /docs) and
+do NOT track the mp3 with Git LFS — GitHub Pages serves the LFS pointer
+file, not the audio, and the game would fall back to synth.
 
-----------------------------------------------------------------------
-FIX 1 — THE PALETTE WAS NOT BEAT-SYNCED
-----------------------------------------------------------------------
-drawSky() picked the palette off a wall clock:
+BUILD 11 CHANGE — A LEDGE CAN NO LONGER BE MISSED ON THE WAY DOWN.
+Build 8-10 only counted tunnelling: detectPassthru() incremented the
+PASSTHRU number in the diagnostics overlay and then let the player keep
+falling. Build 11 catches it instead.
 
-    const pal = palettes[Math.floor(performance.now()/650) % n]
+1. TUNNEL RESCUE.
+   findTunnel() replaces detectPassthru(). When a descending substep
+   takes the feet from above a platform's top to below its bottom in one
+   slice, the player is snapped onto the highest such platform exactly
+   the way a normal landing snaps, with the same vy=0, the same landing
+   damage and the same land sound. PASSTHRU still counts the event so
+   the overlay stays an honest test, and RESCUED counts the correction.
+   Both should read 0 in normal play; if one ever ticks, the run no
+   longer loses a ledge because of it.
+2. TUNNELLING IS NOW MATHEMATICALLY BLOCKED, NOT JUST UNLIKELY.
+   Vertical substeps are capped at PLATFORM_H-2 as well as SUBSTEP_MAX,
+   so a single slice can never exceed a platform's own thickness. With
+   today's constants (SUBSTEP_MAX 3.5, PLATFORM_H 9, TERMINAL 12.5) the
+   substep count is identical to Build 10, so nothing about the physics
+   changes — the cap only protects you if a constant is edited later.
+3. THE LEDGE UNDER YOUR FEET CANNOT BE CULLED.
+   The >110 platform prune could theoretically drop the platform the
+   player was standing on, dropping the player with it. The platform
+   returned by the last landing is now always kept.
 
-That advances every 650 ms regardless of the music, and against real
-tempos it never lines up — the palette-to-beat ratio comes out 0.98 at
-90 BPM, 1.08 at 100, 1.30 at 120, 1.52 at 140, 1.89 at 174. Only the
-flash and the shape jitter were beat-driven, so the biggest visual
-element in the game was drifting against the track.
+STILL INTENTIONAL: a ledge is solid from above and open from below.
+Jumping up through a platform is how the tower is climbed, so upward
+collision is deliberately not tested. Say the word if you want ledges
+solid from underneath too — that one really would change the climb.
 
-Now paletteIndex advances inside the beat branch of sampleBeat(), with
-a paletteMix cross-fade so the colour SNAPS on the kick instead of
-cutting. skyHold is a 3.5 s safety net that fires only when no beat has
-arrived — silence, a breakdown, or a missing file. Palette count went
-back up from 8 to 16.
+BUILD 10 — ONE TAP STARTS THE CLIMB.
+Tap the coin once and the cabinet boots straight into the run with the
+song already playing. The PRESS START screen is now the between-runs
+screen, reached from PAUSE → END RUN, from ◀ BACK TO THE BOARD, and
+after a run that misses the top three. SOUND / SKY / DIAGNOSTICS live
+there; M, 0 and P still work mid-climb. Blocked-audio warnings are
+mirrored to the toast because the attract status line is off screen once
+the run starts. The AudioContext is still created, resumed and
+track.play()'d synchronously inside the coin tap, which is the only
+thing iOS Safari accepts.
 
-----------------------------------------------------------------------
-FIX 2 — GAMEPAD START CANCELLED ITS OWN PAUSE
-----------------------------------------------------------------------
-    const confirm = standard ? (btn(0)||btn(1)||btn(8)||btn(9)) : any;
-    const pause   = standard && btn(9);
+BUILD 9 FIXES, ALL STILL IN PLACE.
+1. Muting with M before the coin could leave the cabinet silent forever;
+   toggleSound() now goes through the idempotent unlockAudio().
+2. gameOver() no longer deletes your earlier YOU rows.
+3. Rank is found by object identity, and the RANK line is omitted from a
+   copied record that did not place.
+4. supportAt() re-checks the feet after the sideways slices, removing a
+   one-frame free jump off ledges. Coyote time is unchanged.
+5. fallStart is clamped to the last grounded height, so a walk-off is no
+   longer under-counted for damage.
+6. insertCoin() uses a real try/finally.
+7. bindButton() adds a de-duplicated touch pointerup, so a tap that
+   drifts still registers on iOS.
+8. The thumb pads own touchKeys{}, so keyboard and gamepad cannot clear
+   them.
+9. The pads also appear under (hover:none) and after any real touch.
+10. Toasts are hidden when play stops.
 
-btn(9) was in BOTH sets. One press of START fired pauseGame(), then the
-confirm branch saw the same press, found state==='paused', and called
-resumeGame(). The pause lasted zero frames. And because pause required
-standard mapping, START did nothing at all on a non-standard pad —
-which is exactly why tapping the top corner worked but START did not.
+The dossier shows the score restated with a live link to
+youtube.com/@x-ackley under the record. Every other word of it, and the
+top-three trigger, are untouched.
 
-Roles are now disjoint: START/SELECT pause on ANY pad, confirm is face
-buttons 0-3 only, and a pauseFired guard stops a simultaneous START+A
-from cancelling itself.
-
-----------------------------------------------------------------------
-FIX 3 — THE HIGH SCORE BOARD DELETED YOUR BEST
-----------------------------------------------------------------------
-    board = board.filter(o => o.n !== 'YOU');
-    board.push({n:'YOU', s:final});
-
-Every run stripped your existing entry and inserted the new score
-unconditionally, so a 150-point run wiped a saved 3800. Your entry is
-now only replaced when the new score actually beats it.
-
-----------------------------------------------------------------------
-FIX 4 — A HUNG AUDIO PROMISE BRICKED THE COIN
-----------------------------------------------------------------------
-insertCoin() awaited resumeAudio() and playTrack() BEFORE the
-setTimeout that called showStartScreen(). Paired with
-
-    #coin.busy { pointer-events: none }
-
-a promise that never settled left the coin permanently unclickable and
-needed a page reload. The screen transition now happens FIRST and
-synchronously, audio is armed afterwards, every await is wrapped in
-withTimeout(), coinBusy clears in a finally block, and .busy no longer
-disables pointer events.
-
-While in there: COIN_STARTS_GAME (default true) makes one tap on the
-coin start the climb instead of stopping at the title screen, and
-fftSize went back to 2048 — at 1024 the beat window widened from
-43-172 Hz to 86-345 Hz, picking up snare body and bass notes instead of
-just the kick.
-
-The coin still has to be TAPPED, CLICKED or keyed. That is a browser
-rule, not a bug: an AudioContext only unlocks on a real gesture and a
-gamepad button is not one. SPACE, ENTER, X and Z all work.
-
-----------------------------------------------------------------------
-DIAGNOSTICS — kept from build 7, and sharpened
-----------------------------------------------------------------------
-Press DIAGNOSTICS on the title screen or the 0 key. PASSTHRU counts a
-platform whose top plane the foot crossed with no landing registered.
-Build 7's test required the foot to clear the ENTIRE 9 px body in one
-substep, which a 3.5 px substep can never do, so it always read 0. The
-test is now the honest one: top plane crossed while descending, and no
-landing returned. If it stays at 0 while you play, collision is working
-and any fall is a missed jump. Tell me the number if it climbs.
+Storage keys are still pb_best8 / pb_board8, so your existing best score
+and board survive this upgrade.
 ======================================================================
 -->
 <style>
@@ -128,25 +121,23 @@ canvas{position:absolute;inset:0;display:block;touch-action:none}
 #diag.on{display:block}
 #diag b{color:var(--gold);font-weight:400}
 #diag i{color:var(--red);font-style:normal}
-#pauseTop{position:absolute;z-index:14;top:calc(env(safe-area-inset-top) + 4px);left:50%;transform:translateX(-50%);display:none;width:78px;height:52px;border:2px solid #58677d;border-radius:6px;background:rgba(5,7,12,.9);color:#8ce8ff;font-size:18px;touch-action:manipulation}
+#pauseTop{position:absolute;z-index:12;top:calc(env(safe-area-inset-top) + 4px);left:50%;transform:translateX(-50%);display:none;width:72px;height:48px;border:2px solid #58677d;border-radius:6px;background:rgba(5,7,12,.9);color:#8ce8ff;font-size:18px;touch-action:manipulation}
 #pauseTop.on{display:block}
 #cabinet{width:min(310px,94vw);padding:17px 15px 19px;border:1px solid #202735;border-radius:7px;background:linear-gradient(#0d111a,#07090f);box-shadow:0 15px 45px #000}
 #cabTop{font-size:8px;letter-spacing:4px;color:#536176;margin-bottom:11px}
 #deadScreen{height:136px;border:1px solid #151b26;background:radial-gradient(ellipse,#101722,#05070b 72%);display:flex;align-items:center;justify-content:center;color:#263247;font-size:9px;letter-spacing:4px;position:relative;overflow:hidden}
 #deadScreen:after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.018) 0 1px,transparent 1px 3px)}
 #slot{font-size:7px;letter-spacing:3px;color:#566174;margin-top:12px}
-#coinWrap{position:relative;width:126px;height:126px;margin:15px auto 0}
+#coinWrap{position:relative;width:116px;height:116px;margin:15px auto 0}
 #coin{position:absolute;inset:4px;border:0;border-radius:50%;touch-action:manipulation;color:#392e10;font-size:10px;font-weight:900;letter-spacing:1.5px;line-height:1.35;background:radial-gradient(circle at 34% 28%,#fff1b8,#d5ba68 38%,#9b7932 77%,#594216);box-shadow:0 4px 0 #493514,0 9px 20px #000,inset 0 0 0 4px rgba(255,255,255,.18),inset 0 0 0 7px rgba(70,50,10,.35)}
 #coin:active{transform:translateY(2px)}
 #coin.hint{animation:coinPulse .65s steps(2,end) infinite}
-/* FIX 4: pointer-events removed. A stuck busy class can no longer make
-   the coin permanently unclickable. */
-#coin.busy{filter:saturate(.6)}
+#coin.busy{filter:saturate(.5);pointer-events:none}
 @keyframes coinPulse{50%{box-shadow:0 4px 0 #493514,0 9px 20px #000,inset 0 0 0 4px rgba(255,255,255,.18),0 0 0 4px var(--gold),0 0 30px var(--gold)}}
 .tape{position:absolute;width:61px;height:21px;background:rgba(230,225,198,.29);pointer-events:none}
 .t1{left:-13px;top:1px;transform:rotate(-38deg)}.t2{right:-13px;bottom:1px;transform:rotate(-38deg)}
 #attractText{font-size:9px;letter-spacing:2px;line-height:1.8;color:#667184;margin-top:17px}
-#attractStatus{font-size:8px;letter-spacing:2px;color:var(--green);min-height:12px;margin-top:9px}
+#attractStatus{font-size:8px;letter-spacing:2px;color:var(--green);min-height:12px;margin-top:9px;max-width:300px;line-height:1.6}
 #padPrompt{font-size:9px;letter-spacing:2px;color:var(--gold);font-weight:800;min-height:13px;margin-top:9px}
 #logo{font-size:18px;letter-spacing:7px;color:var(--cyan)}#logo b{color:var(--red)}
 #subtitle{font-size:10px;letter-spacing:3px;color:#d9e0ea;margin-top:4px}
@@ -162,19 +153,19 @@ canvas{position:absolute;inset:0;display:block;touch-action:none}
 #blink{font-size:9px;color:var(--gold);letter-spacing:3px;margin-top:7px;animation:blink 1s steps(2,end) infinite}@keyframes blink{50%{opacity:0}}
 #pauseTitle{font-size:16px;letter-spacing:6px;color:var(--cyan)}
 #pauseStats{font-size:11px;color:#9aa5b7;line-height:1.9;margin:15px 0}#pauseStats b{color:var(--cyan);font-weight:400}
-#toast{position:absolute;z-index:10;top:34%;left:0;right:0;text-align:center;opacity:0;transition:opacity .2s;font-size:13px;font-weight:900;letter-spacing:2px;pointer-events:none;text-shadow:0 2px 7px #000}
+#toast{position:absolute;z-index:10;top:34%;left:0;right:0;text-align:center;opacity:0;transition:opacity .2s;font-size:13px;font-weight:900;letter-spacing:2px;pointer-events:none;text-shadow:0 2px 7px #000;padding:0 14px}
 #mobilePads{position:absolute;z-index:9;inset:auto 0 0;height:35%;display:none;pointer-events:none}
 .pad{position:absolute;bottom:calc(env(safe-area-inset-bottom) + 14px);display:flex;align-items:center;justify-content:center;width:80px;height:80px;border:2px solid rgba(255,255,255,.32);border-radius:50%;background:rgba(5,8,14,.45);color:#fff;font-size:22px;pointer-events:auto;touch-action:none}
 .pad.on{border-color:var(--cyan);background:rgba(90,216,255,.32)}
 #leftPad{left:14px}#rightPad{left:104px}#jumpPad{right:14px;width:98px;height:98px}
 #dossier{justify-content:flex-start;background:#070a07;text-align:left;padding:calc(env(safe-area-inset-top) + 17px) 15px calc(env(safe-area-inset-bottom) + 17px)}
 #file{width:min(360px,100%);padding:15px;border:1px solid #31502e;background:#0a1009;box-shadow:0 10px 40px #000}
-.seal{text-align:center;color:#85ffa3;font-size:8px;letter-spacing:3px}.agency{text-align:center;color:#e4f3e5;font-size:11px;letter-spacing:2px;font-weight:900;margin-top:4px}.division{text-align:center;color:#557354;font-size:7px;letter-spacing:2px;margin-top:3px}.rule{border-top:1px solid #253723;margin:10px 0}.meta{display:flex;justify-content:space-between;color:#668365;font-size:8px;letter-spacing:1px;margin:3px 0}.meta b{color:#a8dca8;font-weight:400}.fileHead{font-size:9px;letter-spacing:2px;color:#85ffa3;margin:13px 0 7px}.recordBox{text-align:center;border:1px solid #376333;padding:12px;background:#0c170b;position:relative}.recordScore{font-size:36px;font-weight:900;color:#c4ffd2}.recordLabel{font-size:8px;color:#587457;letter-spacing:3px}.recordGrid{display:flex;justify-content:center;gap:24px;margin-top:10px}.recordVal{font-size:14px;color:#9effb5;font-weight:900}.recordKey{font-size:7px;color:#587457;letter-spacing:2px}
-#pbStamp{position:absolute;top:-10px;right:-7px;transform:rotate(7deg);display:none;border:2px solid var(--gold);color:var(--gold);background:rgba(24,20,4,.93);font-size:7.5px;font-weight:900;letter-spacing:1.5px;padding:3px 6px;line-height:1.3}
-#pbStamp.on{display:block}
-#recordDelta{font-size:9px;font-weight:900;letter-spacing:1.5px;color:var(--gold);min-height:12px;margin-top:9px}
-.bodyCopy{font-size:10.5px;line-height:1.7;color:#b7cab7}.bodyCopy em{color:#85ffa3;font-style:normal}.fileButton{width:100%;padding:14px 10px;margin-top:11px;border:1px solid #376333;background:transparent;color:#9effb5;font-size:10px;font-weight:900;letter-spacing:2px;touch-action:manipulation}.fileButton.main{background:#85ffa3;color:#06170a}
-@media(pointer:coarse){#mobilePads{display:block}}
+.seal{text-align:center;color:#85ffa3;font-size:8px;letter-spacing:3px}.agency{text-align:center;color:#e4f3e5;font-size:11px;letter-spacing:2px;font-weight:900;margin-top:4px}.division{text-align:center;color:#557354;font-size:7px;letter-spacing:2px;margin-top:3px}.rule{border-top:1px solid #253723;margin:10px 0}.meta{display:flex;justify-content:space-between;color:#668365;font-size:8px;letter-spacing:1px;margin:3px 0}.meta b{color:#a8dca8;font-weight:400}.fileHead{font-size:9px;letter-spacing:2px;color:#85ffa3;margin:13px 0 7px}.recordBox{text-align:center;border:1px solid #376333;padding:12px;background:#0c170b}.recordScore{font-size:36px;font-weight:900;color:#c4ffd2}.recordLabel{font-size:8px;color:#587457;letter-spacing:3px}.recordGrid{display:flex;justify-content:center;gap:24px;margin-top:10px}.recordVal{font-size:14px;color:#9effb5;font-weight:900}.recordKey{font-size:7px;color:#587457;letter-spacing:2px}.bodyCopy{font-size:10.5px;line-height:1.7;color:#b7cab7}.bodyCopy em{color:#85ffa3;font-style:normal}.fileButton{width:100%;padding:14px 10px;margin-top:11px;border:1px solid #376333;background:transparent;color:#9effb5;font-size:10px;font-weight:900;letter-spacing:2px;touch-action:manipulation}.fileButton.main{background:#85ffa3;color:#06170a}
+.recordLink{margin-top:10px;text-align:center;font-size:9px;letter-spacing:2px;color:#587457;line-height:1.8;-webkit-user-select:text;user-select:text}
+.recordLink b{display:block;color:#c4ffd2;font-weight:900;font-size:10px;letter-spacing:1px;margin-bottom:4px}
+.recordLink a{color:#9effb5;text-decoration:underline}
+@media(pointer:coarse),(hover:none){#mobilePads{display:block}}
+body.touch #mobilePads{display:block}
 </style>
 </head>
 <body>
@@ -187,7 +178,7 @@ canvas{position:absolute;inset:0;display:block;touch-action:none}
 
 <section id="attract" class="screen on">
   <div id="cabinet"><div id="cabTop">TOWER D21 — CABINET 07</div><div id="deadScreen">SCREEN DARK</div><div id="slot">▼ &nbsp; ONE COIN ONE CREDIT &nbsp; ▼</div><div id="coinWrap"><button id="coin">INSERT<br>COIN</button><div class="tape t1"></div><div class="tape t2"></div></div></div>
-  <div id="attractText">THE CABINET IS COLD<br>ONE TAP ON THE COIN AND YOU CLIMB</div><div id="padPrompt">&nbsp;</div><div id="attractStatus">&nbsp;</div>
+  <div id="attractText">THE CABINET IS COLD<br>TAP OR CLICK THE COIN TO WAKE IT</div><div id="padPrompt">&nbsp;</div><div id="attractStatus">&nbsp;</div>
 </section>
 
 <section id="start" class="screen">
@@ -195,6 +186,7 @@ canvas{position:absolute;inset:0;display:block;touch-action:none}
   <div id="instructions">The tower does not end. Climb until your lives run out.<br>Every metre scores. <span class="cyan">Blue cells</span> raise your multiplier.<br><span class="green">Green ledges</span> bank it. Watch the wind.</div>
   <div id="board"><div id="boardHead">HIGH SCORES</div><div id="rows"></div></div>
   <button id="startButton" class="primary">PRESS START</button>
+  <button id="soundButton" class="secondary">SOUND: ON</button>
   <button id="skyButton" class="secondary">SKY: FLASHER</button>
   <button id="diagButton" class="secondary">DIAGNOSTICS: OFF</button>
   <div id="credit">CREDIT 01</div><div id="blink">PRESS START</div>
@@ -207,8 +199,9 @@ canvas{position:absolute;inset:0;display:block;touch-action:none}
 <section id="dossier" class="screen"><div id="file">
   <div class="seal">★ ★ ★</div><div class="agency">FEDERAL BUREAU OF INVESTIGATION</div><div class="division">CYBER DIVISION — ANOMALOUS BROADCAST UNIT</div><div class="rule"></div>
   <div class="meta"><span>CASE FILE</span><b id="caseNo">21-D-0413</b></div><div class="meta"><span>CLASSIFICATION</span><b>CONFIDENTIAL // NOFORN</b></div><div class="meta"><span>RECRUITED ASSET</span><b id="rankText">RANK 3</b></div>
-  <div class="fileHead">CLIMB RECORD — VERIFIED</div><div class="recordBox"><div id="pbStamp">NEW<br>PERSONAL<br>BEST</div><div id="finalScore" class="recordScore">0</div><div class="recordLabel">POINTS</div><div class="recordGrid"><div><div id="finalAlt" class="recordVal">0 M</div><div class="recordKey">ALTITUDE</div></div><div><div id="finalMult" class="recordVal">x1.0</div><div class="recordKey">BEST MULT</div></div><div><div id="finalRank" class="recordVal">1 / 5</div><div class="recordKey">RANK</div></div></div><div id="recordDelta">&nbsp;</div></div>
-  <div class="fileHead">NOTICE OF SELECTION</div><div class="bodyCopy" id="verdict">Your session was logged and flagged by an automated review process you were not informed of. You climbed far enough to matter.<br><br>The subject is designated <em>THE COUNTERFEIT</em>. Every recovered identity was a forgery of someone who never existed. A pirate broadcast follows him, carrying the attract tone of this cabinet.<br><br>Three unrelated systems produced the same phrase: <em>INSERT COINS, INVERT MINDS</em>.</div>
+  <div class="fileHead">CLIMB RECORD — VERIFIED</div><div class="recordBox"><div id="finalScore" class="recordScore">0</div><div class="recordLabel">POINTS</div><div class="recordGrid"><div><div id="finalAlt" class="recordVal">0 M</div><div class="recordKey">ALTITUDE</div></div><div><div id="finalMult" class="recordVal">x1.0</div><div class="recordKey">BEST MULT</div></div><div><div id="finalRank" class="recordVal">1 / 5</div><div class="recordKey">RANK</div></div></div>
+  <div class="recordLink"><b id="linkScore">SCORE 0</b><a id="fileLink" href="https://youtube.com/@x-ackley" target="_blank" rel="noopener">youtube.com/@x-ackley</a></div></div>
+  <div class="fileHead">NOTICE OF SELECTION</div><div class="bodyCopy">Your session was logged and flagged by an automated review process you were not informed of. You climbed far enough to matter.<br><br>The subject is designated <em>THE COUNTERFEIT</em>. Every recovered identity was a forgery of someone who never existed. A pirate broadcast follows him, carrying the attract tone of this cabinet.<br><br>Three unrelated systems produced the same phrase: <em>INSERT COINS, INVERT MINDS</em>.</div>
   <button id="openFile" class="fileButton main">▶ VIEW THE COMPLETE FILE</button><button id="copyRecord" class="fileButton">COPY MY RECORD</button><button id="backButton" class="fileButton">◀ BACK TO THE BOARD</button>
 </div></section>
 
@@ -217,33 +210,30 @@ canvas{position:absolute;inset:0;display:block;touch-action:none}
 'use strict';
 
 /* ---------------- CONFIG ---------------- */
-const TRACK_FILE='Song.mp3';
+const TRACK_NAMES=['Song.mp3','song.mp3','SONG.mp3'];
 const TRACK_TITLE='INSERT COINS, INVERT MINDS';
 const COMPLETE_FILE_URL='https://youtube.com/@x-ackley';
-
-/* true = one tap on the coin starts the climb. false = title screen first. */
-const COIN_STARTS_GAME=true;
-/* nothing may await longer than this during boot */
-const AUDIO_TIMEOUT_MS=400;
 
 const FIXED_DT=1/60;
 const MAX_STEPS=6;
 const LIVES_PER_CREDIT=3;
 const PPM=13;
-
 const PLAYER_W=13;
 const PLAYER_H=22;
 const PLATFORM_H=9;
-
 const GRAVITY=0.60;
 const MOVE_SPEED=2.55;
 const JUMP_SPEED=-11.5;
 const TERMINAL=12.5;
-const SUBSTEP_MAX=3.5;            /* MUST stay below PLATFORM_H (9) */
+const SUBSTEP_MAX=3.5;
 const SNAP_TOLERANCE=1.5;
 const COYOTE_FRAMES=7;
 const JUMP_BUFFER_FRAMES=7;
 const WIND_START_M=20;
+/* BUILD 11: a single vertical slice can never be thicker than a ledge.
+   With SUBSTEP_MAX 3.5 and PLATFORM_H 9 this equals 3.5, so the substep
+   count is identical to Build 10 — it only guards future edits. */
+const VSTEP_MAX=Math.min(SUBSTEP_MAX,PLATFORM_H-2);
 
 const DAMAGE_LIGHT=3.6;
 const DAMAGE_HEAVY=5.4;
@@ -255,7 +245,7 @@ const DEFAULT_BOARD=[{n:'T.S.SPECTRE',s:4200},{n:'ALI3N LEE',s:2400},{n:'K.HALLO
 const $=id=>document.getElementById(id);
 const canvas=$('game');
 const ctx=canvas.getContext('2d',{alpha:false});
-const ui={attract:$('attract'),start:$('start'),pause:$('pause'),dossier:$('dossier'),hud:$('hud'),score:$('score'),best:$('best'),lives:$('lives'),mult:$('mult'),hp:$('hpFill'),wind:$('wind'),coin:$('coin'),status:$('attractStatus'),padPrompt:$('padPrompt'),now:$('nowPlaying'),rows:$('rows'),startButton:$('startButton'),skyButton:$('skyButton'),diagButton:$('diagButton'),pauseTop:$('pauseTop'),pauseStats:$('pauseStats'),resume:$('resumeButton'),quit:$('quitButton'),toast:$('toast'),blink:$('blink'),diag:$('diag')};
+const ui={attract:$('attract'),start:$('start'),pause:$('pause'),dossier:$('dossier'),hud:$('hud'),score:$('score'),best:$('best'),lives:$('lives'),mult:$('mult'),hp:$('hpFill'),wind:$('wind'),coin:$('coin'),status:$('attractStatus'),padPrompt:$('padPrompt'),now:$('nowPlaying'),rows:$('rows'),startButton:$('startButton'),soundButton:$('soundButton'),skyButton:$('skyButton'),diagButton:$('diagButton'),pauseTop:$('pauseTop'),pauseStats:$('pauseStats'),resume:$('resumeButton'),quit:$('quitButton'),toast:$('toast'),blink:$('blink'),diag:$('diag')};
 
 let W=320,H=560,DPR=1;
 function resize(){W=innerWidth||320;H=innerHeight||560;DPR=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(W*DPR);canvas.height=Math.round(H*DPR);canvas.style.width=W+'px';canvas.style.height=H+'px';ctx.setTransform(DPR,0,0,DPR,0,0)}
@@ -265,97 +255,238 @@ resize();
 
 /* ---------------- STATE ---------------- */
 let state='attract';
-let coinBusy=false,coinUsed=false,bootToken=0;
+let coinBusy=false,bootToken=0;
 let lastTime=performance.now(),accumulator=0;
-let score=0,bestScore=loadInt('pb_best8',0),multiplier=1,bestMultiplier=1,peak=0,lives=LIVES_PER_CREDIT;
+let score=0,bestScore=loadInt('pb_best8',loadInt('pb_best7',0)),multiplier=1,bestMultiplier=1,peak=0,lives=LIVES_PER_CREDIT;
 let camera=0,topY=0,platformIndex=0,nextSide=0;
 let wind=0,windTarget=0,windTimer=0;
 let respawnFrames=0,deathLock=false;
-let coyote=0,jumpBuffer=0;
+let coyote=0,jumpBuffer=0,jumpHeld=false;
 let platforms=[],cells=[],shapes=[];
-let skyMode=0,beatPulse=0,syntheticBeatAt=0,lastRealBeat=0,flash=0;
+let skyMode=0,beatPulse=0,flash=0;
 const keys={left:false,right:false,jump:false};
+const padKeys={left:false,right:false,jump:false};
+const touchKeys={left:false,right:false,jump:false};   /* FIX 8: pads get their own set */
 const player={x:0,y:0,vx:0,vy:0,grounded:false,fallStart:0,falling:false,hp:100,face:1};
+let groundedY=0;                                       /* FIX 5: last supported height */
+let standingOn=null;                                   /* BUILD 11: never cull this one */
 let board=loadBoard(),lastRecord=null,toastTimer=0;
 
-/* diagnostics */
 let diagOn=false;
-const diagStats={landings:0,passthru:0,maxSub:0,maxVy:0,lastLandY:0,deaths:0,beats:0};
+const diagStats={landings:0,passthru:0,rescues:0,maxSub:0,maxVy:0,lastLandY:0,deaths:0};
+
+const held=k=>keys[k]||padKeys[k]||touchKeys[k];
 
 /* ---------------- STORAGE ---------------- */
-function loadInt(k,d){try{const n=parseInt(localStorage.getItem(k),10);return Number.isFinite(n)?n:d}catch{return d}}
-function save(k,v){try{localStorage.setItem(k,v)}catch{}}
-function loadBoard(){try{const a=JSON.parse(localStorage.getItem('pb_board8'));if(Array.isArray(a)){const c=a.filter(o=>o&&typeof o.n==='string'&&Number.isFinite(o.s)&&o.s>=0).map(o=>({n:o.n.slice(0,14),s:Math.floor(o.s)})).sort((x,y)=>y.s-x.s).slice(0,5);if(c.length)return c}}catch{}return DEFAULT_BOARD.map(o=>({...o}))}
+function loadInt(k,d){try{const n=parseInt(localStorage.getItem(k),10);return Number.isFinite(n)?n:d}catch(e){return d}}
+function save(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+function loadBoard(){try{const a=JSON.parse(localStorage.getItem('pb_board8')||localStorage.getItem('pb_board7'));if(Array.isArray(a)){const c=a.filter(o=>o&&typeof o.n==='string'&&Number.isFinite(o.s)&&o.s>=0).map(o=>({n:o.n.slice(0,14),s:Math.floor(o.s)})).sort((x,y)=>y.s-x.s).slice(0,5);if(c.length)return c}}catch(e){}return DEFAULT_BOARD.map(o=>({...o}))}
 function saveBoard(){save('pb_board8',JSON.stringify(board))}
 function escapeHTML(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function drawBoard(mark=-1){ui.rows.innerHTML=board.map((o,i)=>`<div class="row ${i===mark?'you':''}"><span>${i+1}</span><span>${escapeHTML(o.n)}</span><span>${o.s}</span></div>`).join('')}
 
 /* ---------------- SCREENS ---------------- */
 function showScreen(name){for(const n of ['attract','start','pause','dossier'])ui[n].classList.toggle('on',n===name)}
-function setState(next){state=next;const live=next==='play'||next==='paused';ui.hud.classList.toggle('on',live);ui.pauseTop.classList.toggle('on',next==='play');ui.diag.classList.toggle('on',diagOn&&live);$('mobilePads').style.visibility=next==='play'?'visible':'hidden'}
+function setState(next){
+  state=next;
+  const live=next==='play'||next==='paused';
+  ui.hud.classList.toggle('on',live);
+  ui.pauseTop.classList.toggle('on',next==='play');
+  ui.diag.classList.toggle('on',diagOn&&live);
+  $('mobilePads').style.visibility=next==='play'?'visible':'hidden';
+  if(next!=='play'&&next!=='paused'){clearTimeout(toastTimer);ui.toast.style.opacity='0'}  /* FIX 10 */
+}
 function toast(text,color='#ffbf55'){ui.toast.textContent=text;ui.toast.style.color=color;ui.toast.style.opacity='1';clearTimeout(toastTimer);toastTimer=setTimeout(()=>ui.toast.style.opacity='0',750)}
 function livesText(){return Array.from({length:LIVES_PER_CREDIT},(_,i)=>i<lives?'●':'○').join('')}
 function updateHUD(){ui.score.textContent=Math.floor(score);ui.best.textContent='BEST '+Math.max(bestScore,Math.floor(score));ui.lives.textContent=livesText();ui.mult.textContent='x'+multiplier.toFixed(1);ui.hp.style.width=Math.max(0,player.hp)+'%';const m=Math.abs(wind),a=wind<0?'◀':'▶';ui.wind.textContent=m>.34?a+a+a:m>.2?a+a:m>.025?a:'—';ui.wind.style.color=m>.34?'#ff7d87':m>.2?'#ffbf55':'#8ce8ff'}
 function updateDiag(){if(!diagOn)return;ui.diag.innerHTML=`vy <b>${player.vy.toFixed(2)}</b>  max <b>${diagStats.maxVy.toFixed(2)}</b>
 grounded <b>${player.grounded?'YES':'no'}</b>  coyote <b>${coyote}</b>
 substeps <b>${diagStats.maxSub}</b>  plats <b>${platforms.length}</b>
+audio <b>${AC?AC.state:'none'}</b>  music <b>${trackPlaying?'FILE':synthOn?'SYNTH':'off'}</b>
 landings <b>${diagStats.landings}</b>  deaths <b>${diagStats.deaths}</b>
-beats <b>${diagStats.beats}</b>  pal <b>${paletteIndex}</b>
-PASSTHRU <i>${diagStats.passthru}</i>`}
+PASSTHRU <i>${diagStats.passthru}</i>  RESCUED <i>${diagStats.rescues}</i>`}
 
-/* ---------------- AUDIO ---------------- */
-let AC=null,master=null,sfxGain=null,musicGain=null,analyser=null,freq=null,track=null,sourceNode=null,trackPlaying=false;
-/* FIX 4: nothing during boot may await forever */
-function withTimeout(promise,ms){return Promise.race([Promise.resolve(promise).catch(()=>false),new Promise(r=>setTimeout(()=>r('timeout'),ms))])}
-function initAudio(){if(AC)return true;const A=window.AudioContext||window.webkitAudioContext;if(!A)return false;try{AC=new A();master=AC.createGain();sfxGain=AC.createGain();musicGain=AC.createGain();master.gain.value=.42;sfxGain.gain.value=.34;musicGain.gain.value=1;sfxGain.connect(master);musicGain.connect(master);master.connect(AC.destination);analyser=AC.createAnalyser();
-/* 2048 keeps bins 2-7 at 43-172 Hz, the kick region. 1024 widened it to
-   86-345 Hz and started catching snare body and bass notes. */
-analyser.fftSize=2048;analyser.smoothingTimeConstant=.68;freq=new Uint8Array(analyser.frequencyBinCount);musicGain.connect(analyser);return true}catch{return false}}
-function makeTrack(){if(track)return;track=new Audio(TRACK_FILE);track.loop=true;track.preload='auto';track.addEventListener('error',()=>{ui.status.textContent='SONG.MP3 NOT FOUND — SYNTH RHYTHM ACTIVE';ui.now.textContent='♪ SYNTH RHYTHM ACTIVE'},{once:true});track.load()}
-function connectTrack(){if(!AC||!track||sourceNode)return;try{sourceNode=AC.createMediaElementSource(track);sourceNode.connect(musicGain)}catch{sourceNode=null}}
-async function resumeAudio(){if(!AC)return false;try{if(AC.state!=='running')await withTimeout(AC.resume(),AUDIO_TIMEOUT_MS);return AC.state==='running'}catch{return false}}
-async function playTrack(){if(!track||trackPlaying)return;const r=await withTimeout(track.play(),AUDIO_TIMEOUT_MS);if(r==='timeout'){ui.now.textContent='♪ AUDIO SLOW — STILL LOADING';return}if(!track.paused){trackPlaying=true;ui.now.textContent='♪ '+TRACK_TITLE}else ui.now.textContent='♪ AUDIO BLOCKED — SYNTH RHYTHM ACTIVE'}
-function tone(f,d=.1,type='square',vol=.16,end=0){if(!AC||AC.state!=='running'||!sfxGain)return;const o=AC.createOscillator(),g=AC.createGain(),t=AC.currentTime;o.type=type;o.frequency.setValueAtTime(f,t);if(end)o.frequency.exponentialRampToValueAtTime(Math.max(30,end),t+d);g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(vol,t+.008);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(g);g.connect(sfxGain);o.start(t);o.stop(t+d+.03)}
-const sfx={coin(){tone(1245,.05,'square',.23);setTimeout(()=>tone(988,.06,'square',.2),60);setTimeout(()=>tone(1319,.18,'square',.2),130)},boot(){[196,262,330,392,523].forEach((f,i)=>setTimeout(()=>tone(f,.14,'square',.17),i*70))},jump(){tone(330,.13,'square',.15,620)},land(){tone(120,.055,'triangle',.1,72)},hurt(){tone(220,.2,'sawtooth',.23,90)},cell(){tone(720,.08,'square',.18);setTimeout(()=>tone(1080,.1,'square',.15),65)},bank(){[523,659,784,1047].forEach((f,i)=>setTimeout(()=>tone(f,.12,'triangle',.16),i*55))},life(){tone(440,.14,'square',.2,220)},over(){[392,330,262,196].forEach((f,i)=>setTimeout(()=>tone(f,.24,'triangle',.2),i*150))},pause(){tone(392,.1,'square',.14,300)},resume(){tone(523,.1,'square',.15,700)},commend(){[523,659,784,1047].forEach((f,i)=>setTimeout(()=>tone(f,.14,'square',.18),i*80));setTimeout(()=>tone(1319,.32,'triangle',.2),340)},stamp(){tone(140,.14,'square',.18,70)}};
-function setMix(v){if(master)master.gain.value=v;if(track&&!sourceNode)try{track.volume=Math.max(0,Math.min(1,v))}catch{}}
-
-/* ---------------- COIN ----------------
-   FIX 4: the screen advances FIRST and synchronously. Build 7 awaited
-   resumeAudio() and playTrack() before the setTimeout that called
-   showStartScreen(), so a promise that never settled left the coin
-   stuck behind pointer-events:none and needed a page reload. */
-async function insertCoin(){
-  if(state!=='attract'||coinBusy||coinUsed)return;
-  coinBusy=true;coinUsed=true;
-  const token=++bootToken;
-  ui.coin.classList.add('busy');
-  ui.coin.classList.remove('hint');
-  ui.padPrompt.innerHTML='&nbsp;';
-  ui.status.textContent='CREDIT ACCEPTED';
-  makeTrack();
-
-  /* 1) screen, immediately */
-  if(COIN_STARTS_GAME)startGame(true);
-  else showStartScreen();
-
-  /* 2) audio, best effort, never blocking */
+/* ---------------- AUDIO ----------------
+   Everything that must happen inside the user gesture happens on the
+   first lines of unlockAudio(): construct the context, resume it, and
+   call play() on the media element. No awaits before those calls.
+   That is why the song is already up when the climb begins. */
+let AC=null,master=null,sfxGain=null,musicGain=null,analyser=null,freq=null,noiseBuf=null;
+let track=null,sourceNode=null,trackPlaying=false,trackIndex=0,wantMusic=true,soundOn=true;
+let synthOn=false,synthStep=0,synthNext=0,beatQueue=[];
+const SYNTH_BPM=112,SYNTH_STEP=60/SYNTH_BPM/4;
+/* BUILD 10: the attract status line is no longer on screen once the run
+   starts, so a blocked-audio warning is mirrored to the toast. Identical
+   wording, no new strings. */
+function say(msg,el){
+  (el||ui.status).textContent=msg;
+  if(!el&&!ui.attract.classList.contains('on')&&(msg.indexOf('LOCKED')>=0||msg.indexOf('BLOCKED')>=0))toast(msg,'#ffbf55');
+}
+function initAudio(){
+  if(AC)return true;
+  const A=window.AudioContext||window.webkitAudioContext;
+  if(!A){say('WEB AUDIO UNSUPPORTED — VISUAL MODE');return false}
   try{
-    if(initAudio()){
-      await resumeAudio();
-      if(token!==bootToken)return;
-      connectTrack();
-      sfx.coin();
-      await playTrack();
-      if(token!==bootToken)return;
-      setTimeout(()=>{if(token===bootToken)sfx.boot()},200);
-      setMix(state==='play'?.62:.42);
-    } else ui.status.textContent='AUDIO UNSUPPORTED — VISUAL MODE';
-  } finally {
-    coinBusy=false;
-    ui.coin.classList.remove('busy');
+    AC=new A({latencyHint:'interactive'});
+    master=AC.createGain();sfxGain=AC.createGain();musicGain=AC.createGain();
+    master.gain.value=.42;sfxGain.gain.value=.34;musicGain.gain.value=.9;
+    sfxGain.connect(master);musicGain.connect(master);master.connect(AC.destination);
+    analyser=AC.createAnalyser();analyser.fftSize=1024;analyser.smoothingTimeConstant=.68;
+    freq=new Uint8Array(analyser.frequencyBinCount);musicGain.connect(analyser);
+    const len=Math.floor(AC.sampleRate*.5);noiseBuf=AC.createBuffer(1,len,AC.sampleRate);
+    const d=noiseBuf.getChannelData(0);for(let i=0;i<len;i++)d[i]=Math.random()*2-1;
+    return true;
+  }catch(err){console.error('POLYBIUS audio init failed:',err);say('AUDIO INIT FAILED — SEE CONSOLE');AC=null;return false}
+}
+function makeTrack(){
+  if(track)return;
+  track=new Audio();
+  track.loop=true;track.preload='auto';track.playsInline=true;
+  track.setAttribute('playsinline','');
+  track.src=new URL(TRACK_NAMES[trackIndex],document.baseURI).href;
+  track.addEventListener('playing',()=>{trackPlaying=true;stopSynth();say('♪ '+TRACK_TITLE,ui.now);say('SOUND ONLINE — SONG FOUND')});
+  track.addEventListener('ended',()=>{trackPlaying=false});
+  track.addEventListener('error',()=>{
+    console.warn('POLYBIUS: could not load '+TRACK_NAMES[trackIndex]);
+    trackPlaying=false;
+    if(++trackIndex<TRACK_NAMES.length){
+      track.src=new URL(TRACK_NAMES[trackIndex],document.baseURI).href;
+      track.load();
+      if(wantMusic)track.play().catch(()=>{});
+    }else{
+      say('SONG FILE NOT FOUND — SYNTH RHYTHM ACTIVE');
+      say('♪ SYNTH RHYTHM (NO SONG FILE)',ui.now);
+      startSynth();
+    }
+  });
+  try{track.load()}catch(e){}
+}
+function connectTrack(){
+  if(!AC||!track||sourceNode)return;
+  try{sourceNode=AC.createMediaElementSource(track);sourceNode.connect(musicGain)}
+  catch(err){console.warn('POLYBIUS: media element source unavailable, using element volume',err);sourceNode=null}
+}
+/* must be called synchronously from a real user gesture */
+function unlockAudio(){
+  if(!soundOn)return Promise.resolve(false);
+  if(!initAudio())return Promise.resolve(false);
+  makeTrack();
+  let resumed;
+  try{resumed=AC.state==='running'?Promise.resolve():AC.resume()}catch(err){resumed=Promise.reject(err)}
+  connectTrack();
+  let played=Promise.resolve();
+  if(wantMusic&&track&&track.paused&&trackIndex<TRACK_NAMES.length){
+    try{const p=track.play();played=p&&p.then?p:Promise.resolve()}catch(err){played=Promise.reject(err)}
+  }
+  return Promise.allSettled([resumed,played]).then(res=>{
+    const live=!!AC&&AC.state==='running';
+    if(res[0].status==='rejected')console.warn('POLYBIUS: context resume rejected',res[0].reason);
+    if(res[1].status==='rejected'){
+      console.warn('POLYBIUS: song playback rejected',res[1].reason);
+      say('SONG BLOCKED BY BROWSER — TAP AGAIN');
+    }
+    if(live&&!trackPlaying)startSynth();
+    if(!live)say('AUDIO STILL LOCKED — TAP THE SCREEN AGAIN');
+    return live;
+  });
+}
+/* second-chance unlock: any later tap or key resumes a stalled context */
+function nudgeAudio(){
+  if(!soundOn)return;
+  if(!AC){return}
+  if(AC.state!=='running'){AC.resume().catch(()=>{})}
+  if(wantMusic&&track&&track.paused&&trackIndex<TRACK_NAMES.length)track.play().catch(()=>{});
+}
+document.addEventListener('pointerdown',nudgeAudio,true);
+document.addEventListener('keydown',nudgeAudio,true);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)nudgeAudio()});
+
+/* --- synth rhythm: music and beat pulses with no file at all --- */
+function startSynth(){if(!AC||trackPlaying||!soundOn)return;if(!synthOn){synthOn=true;synthStep=0;synthNext=AC.currentTime+.08;if(!track||trackIndex>=TRACK_NAMES.length)say('♪ SYNTH RHYTHM ACTIVE',ui.now)}}
+function stopSynth(){synthOn=false;beatQueue.length=0}
+function kick(t){const o=AC.createOscillator(),g=AC.createGain();o.type='sine';o.frequency.setValueAtTime(132,t);o.frequency.exponentialRampToValueAtTime(42,t+.13);g.gain.setValueAtTime(.9,t);g.gain.exponentialRampToValueAtTime(.001,t+.16);o.connect(g).connect(musicGain);o.start(t);o.stop(t+.2)}
+function snare(t){const s=AC.createBufferSource();s.buffer=noiseBuf;const f=AC.createBiquadFilter();f.type='highpass';f.frequency.value=1500;const g=AC.createGain();g.gain.setValueAtTime(.42,t);g.gain.exponentialRampToValueAtTime(.001,t+.13);s.connect(f).connect(g).connect(musicGain);s.start(t);s.stop(t+.16)}
+function hat(t){const s=AC.createBufferSource();s.buffer=noiseBuf;const f=AC.createBiquadFilter();f.type='highpass';f.frequency.value=7200;const g=AC.createGain();g.gain.setValueAtTime(.16,t);g.gain.exponentialRampToValueAtTime(.001,t+.045);s.connect(f).connect(g).connect(musicGain);s.start(t);s.stop(t+.07)}
+function bass(f,t){const o=AC.createOscillator(),g=AC.createGain();o.type='sawtooth';o.frequency.setValueAtTime(f,t);const lp=AC.createBiquadFilter();lp.type='lowpass';lp.frequency.setValueAtTime(900,t);lp.frequency.exponentialRampToValueAtTime(160,t+.2);g.gain.setValueAtTime(.001,t);g.gain.exponentialRampToValueAtTime(.3,t+.01);g.gain.exponentialRampToValueAtTime(.001,t+.22);o.connect(lp).connect(g).connect(musicGain);o.start(t);o.stop(t+.26)}
+const BASS_PATTERN=[55,0,0,82.41,0,0,65.41,0,0,55,0,73.42,0,0,49,0];
+function scheduleSynth(){
+  if(!synthOn||!AC||AC.state!=='running'||trackPlaying)return;
+  const now=AC.currentTime;
+  if(synthNext<now)synthNext=now+.05;
+  while(synthNext<now+.25){
+    const s=synthStep%16,t=synthNext;
+    if(s%4===0){kick(t);beatQueue.push(t)}
+    if(s===4||s===12)snare(t);
+    if(s%2===1)hat(t);
+    if(BASS_PATTERN[s])bass(BASS_PATTERN[s],t);
+    synthNext+=SYNTH_STEP;synthStep++;
   }
 }
-function showStartScreen(){releaseInputs();setState('start');showScreen('start');setMix(.42);drawBoard();ui.startButton.textContent='PRESS START';ui.blink.textContent='PRESS START';ui.skyButton.textContent=['SKY: FLASHER','SKY: CALM','SKY: PLAIN'][skyMode]}
+function tone(f,d=.1,type='square',vol=.16,end=0){
+  if(!AC||AC.state!=='running'||!sfxGain||!soundOn)return;
+  const o=AC.createOscillator(),g=AC.createGain(),t=AC.currentTime;
+  o.type=type;o.frequency.setValueAtTime(f,t);
+  if(end)o.frequency.exponentialRampToValueAtTime(Math.max(30,end),t+d);
+  g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(vol,t+.008);g.gain.exponentialRampToValueAtTime(.0001,t+d);
+  o.connect(g).connect(sfxGain);o.start(t);o.stop(t+d+.03);
+}
+const sfx={coin(){tone(1245,.05,'square',.23);setTimeout(()=>tone(988,.06,'square',.2),60);setTimeout(()=>tone(1319,.18,'square',.2),130)},boot(){[196,262,330,392,523].forEach((f,i)=>setTimeout(()=>tone(f,.14,'square',.17),i*70))},jump(){tone(330,.13,'square',.15,620)},land(){tone(120,.055,'triangle',.1,72)},hurt(){tone(220,.2,'sawtooth',.23,90)},cell(){tone(720,.08,'square',.18);setTimeout(()=>tone(1080,.1,'square',.15),65)},bank(){[523,659,784,1047].forEach((f,i)=>setTimeout(()=>tone(f,.12,'triangle',.16),i*55))},life(){tone(440,.14,'square',.2,220)},over(){[392,330,262,196].forEach((f,i)=>setTimeout(()=>tone(f,.24,'triangle',.2),i*150))},pause(){tone(392,.1,'square',.14,300)},resume(){tone(523,.1,'square',.15,700)}};
+function setMix(v){
+  if(master&&AC)master.gain.setTargetAtTime(soundOn?v:0,AC.currentTime,.05);
+  if(track&&!sourceNode){try{track.volume=Math.max(0,Math.min(1,soundOn?v*1.6:0))}catch(e){}}
+}
+function toggleSound(){
+  soundOn=!soundOn;
+  ui.soundButton.textContent='SOUND: '+(soundOn?'ON':'OFF');
+  if(!soundOn){setMix(0);stopSynth();if(track)track.pause();trackPlaying=false;say('♪ MUTED',ui.now)}
+  else{
+    setMix(state==='play'?.62:.42);
+    unlockAudio();                       /* FIX 1: builds AC if it was never created */
+    if(!trackPlaying)startSynth();
+    say('♪ '+(trackPlaying?TRACK_TITLE:'SYNTH RHYTHM ACTIVE'),ui.now);
+  }
+}
+
+/* ---------------- COIN ---------------- */
+function insertCoin(){
+  if(state!=='attract'||coinBusy)return;
+  coinBusy=true;
+  const token=++bootToken;
+  const release=()=>{coinBusy=false;ui.coin.classList.remove('busy')};   /* FIX 6 */
+  try{
+    setState('booting');
+    ui.coin.classList.add('busy');
+    ui.coin.classList.remove('hint');
+    ui.padPrompt.innerHTML='&nbsp;';
+    say('READING COIN...');
+    const unlocking=unlockAudio();      /* context + track.play() inside the gesture */
+    sfx.coin();
+    setTimeout(()=>sfx.boot(),210);
+    unlocking.then(live=>{if(live&&trackIndex<TRACK_NAMES.length&&!trackPlaying)say('SOUND ONLINE')});
+  }catch(err){
+    console.error('POLYBIUS: coin insert failed:',err);
+    release();
+    return;
+  }
+  setTimeout(()=>{
+    try{if(token===bootToken)bootIntoRun()}   /* BUILD 10: one coin, straight into the climb */
+    finally{release()}
+  },560);
+}
+/* BUILD 10: prepare the between-runs screen in the background, then drop
+   straight into gameplay with the music already running. */
+function bootIntoRun(){
+  ui.startButton.textContent='PRESS START';
+  ui.blink.textContent='PRESS START';
+  ui.skyButton.textContent=['SKY: FLASHER','SKY: CALM','SKY: PLAIN'][skyMode];
+  ui.soundButton.textContent='SOUND: '+(soundOn?'ON':'OFF');
+  drawBoard();
+  if(ui.now.textContent.trim()==='')say(trackPlaying?'♪ '+TRACK_TITLE:'♪ SYNTH RHYTHM ACTIVE',ui.now);
+  releaseInputs();
+  setState('start');
+  startGame();
+}
+function showStartScreen(){releaseInputs();setState('start');showScreen('start');setMix(.42);drawBoard();ui.startButton.textContent='PRESS START';ui.blink.textContent='PRESS START';ui.skyButton.textContent=['SKY: FLASHER','SKY: CALM','SKY: PLAIN'][skyMode];ui.soundButton.textContent='SOUND: '+(soundOn?'ON':'OFF');if(ui.now.textContent.trim()==='')say(trackPlaying?'♪ '+TRACK_TITLE:'♪ SYNTH RHYTHM ACTIVE',ui.now)}
 
 /* ---------------- LEVEL ---------------- */
 function addPlatform(){
@@ -375,26 +506,16 @@ function buildRun(){
   platforms.push({x:-80,y:0,w:W+160,h:50,type:'ground'});
   for(let i=0;i<28;i++)addPlatform();
   Object.assign(player,{x:W/2-PLAYER_W/2,y:-PLAYER_H-1,vx:0,vy:0,grounded:true,fallStart:-PLAYER_H,falling:false,hp:100,face:1});
+  groundedY=player.y;standingOn=platforms[0];
   score=0;multiplier=1;bestMultiplier=1;peak=0;camera=-H+90;
   wind=0;windTarget=0;windTimer=200;
-  lives=LIVES_PER_CREDIT;respawnFrames=0;deathLock=false;coyote=0;jumpBuffer=0;
-  diagStats.landings=0;diagStats.passthru=0;diagStats.maxSub=0;diagStats.maxVy=0;diagStats.deaths=0;diagStats.beats=0;
-  makeShapes();resetSky();updateHUD();
+  lives=LIVES_PER_CREDIT;respawnFrames=0;deathLock=false;coyote=0;jumpBuffer=0;jumpHeld=false;
+  diagStats.landings=0;diagStats.passthru=0;diagStats.rescues=0;diagStats.maxSub=0;diagStats.maxVy=0;diagStats.deaths=0;
+  makeShapes();updateHUD();
 }
-function startGame(fromCoin=false){
-  if(!fromCoin&&state!=='start'&&state!=='dead')return;
-  buildRun();showScreen('none');setState('play');setMix(.62);accumulator=0;lastTime=performance.now();
-}
+function startGame(){if(state!=='start'&&state!=='dead')return;nudgeAudio();buildRun();showScreen('none');setState('play');setMix(.62);accumulator=0;lastTime=performance.now()}
 
-/* ---------------- COLLISION ----------------
-   UNCHANGED FROM BUILD 7. This is the correct model and it verified
-   clean: 40,000 simulated steps x 3 seeds, zero missed landings.
-   Every substep moves at most SUBSTEP_MAX (3.5) and platforms are
-   PLATFORM_H (9) thick, so the foot cannot skip a platform between
-   two samples. Two acceptance cases, both only while descending:
-     1. the foot crossed the top plane during this substep
-     2. the foot ended inside the platform body (rescues fractional starts)
-------------------------------------------------- */
+/* ---------------- COLLISION ---------------- */
 function findLanding(prevX,nextX,prevFoot,nextFoot){
   const left=Math.min(prevX,nextX);
   const right=Math.max(prevX,nextX)+PLAYER_W;
@@ -407,38 +528,56 @@ function findLanding(prevX,nextX,prevFoot,nextFoot){
   }
   return best;
 }
-/* Diagnostic only. Build 7 required the foot to clear the ENTIRE 9px
-   body in one substep, which a 3.5px substep can never do, so the
-   counter always read 0. This is the honest test: top plane crossed
-   while descending, and no landing was returned. */
-function detectPassthru(prevX,nextX,prevFoot,nextFoot){
-  if(nextFoot<=prevFoot)return false;
+/* BUILD 11: the old detectPassthru() only counted. This returns the
+   platform that was skipped so the caller can land on it instead. */
+function findTunnel(prevX,nextX,prevFoot,nextFoot){
+  if(nextFoot<=prevFoot)return null;
   const left=Math.min(prevX,nextX);
   const right=Math.max(prevX,nextX)+PLAYER_W;
+  let best=null;
   for(const p of platforms){
     if(right<=p.x||left>=p.x+p.w)continue;
-    if(prevFoot<=p.y&&nextFoot>=p.y)return true;
+    if(prevFoot<p.y&&nextFoot>p.y+p.h){if(!best||p.y<best.y)best=p}
   }
-  return false;
+  return best;
+}
+/* FIX 4: is anything actually holding the feet up at this x? */
+function supportAt(x,footY){
+  for(const p of platforms){
+    if(x+PLAYER_W<=p.x||x>=p.x+p.w)continue;
+    if(Math.abs(footY-p.y)<=SNAP_TOLERANCE)return p;
+  }
+  return null;
 }
 function moveAndCollide(){
   const totalX=player.vx,totalY=player.vy;
-  const span=Math.max(Math.abs(totalX),Math.abs(totalY));
-  const steps=Math.max(1,Math.ceil(span/SUBSTEP_MAX));
+  /* BUILD 11: horizontal and vertical travel are capped separately, so a
+     slice can never be thicker than a ledge */
+  const steps=Math.max(1,Math.ceil(Math.abs(totalX)/SUBSTEP_MAX),Math.ceil(Math.abs(totalY)/VSTEP_MAX));
   if(steps>diagStats.maxSub)diagStats.maxSub=steps;
   const stepX=totalX/steps,stepY=totalY/steps;
   let landed=null;
   for(let i=0;i<steps;i++){
     const prevX=player.x,prevFoot=player.y+PLAYER_H;
     player.x=Math.max(2,Math.min(W-PLAYER_W-2,player.x+stepX));
-    player.y+=stepY;
+    if(!landed)player.y+=stepY;
+    if(landed)continue;                       /* keep sliding sideways, no more falling */
     const nextFoot=player.y+PLAYER_H;
     if(player.vy>=0){
       const hit=findLanding(prevX,player.x,prevFoot,nextFoot);
-      if(hit){player.y=hit.y-PLAYER_H;player.vy=0;landed=hit;diagStats.landings++;diagStats.lastLandY=hit.y;break}
-      if(detectPassthru(prevX,player.x,prevFoot,nextFoot))diagStats.passthru++;
+      if(hit){player.y=hit.y-PLAYER_H;player.vy=0;landed=hit;diagStats.landings++;diagStats.lastLandY=hit.y;continue}
+      /* BUILD 11: a ledge was jumped over in one slice — put the player on it */
+      const tunnel=findTunnel(prevX,player.x,prevFoot,nextFoot);
+      if(tunnel){
+        diagStats.passthru++;diagStats.rescues++;
+        player.y=tunnel.y-PLAYER_H;player.vy=0;landed=tunnel;
+        diagStats.landings++;diagStats.lastLandY=tunnel.y;
+        continue;
+      }
     }
   }
+  /* FIX 4: the sideways slices may have carried the feet past the edge */
+  if(landed&&!supportAt(player.x,player.y+PLAYER_H))landed=null;
   return landed;
 }
 
@@ -468,7 +607,8 @@ function respawn(){
     choice=platforms[1];peak=0;camera=-H+90;
   }
   Object.assign(player,{x:choice.x+choice.w/2-PLAYER_W/2,y:choice.y-PLAYER_H,vx:0,vy:0,grounded:true,falling:false,fallStart:choice.y-PLAYER_H,hp:100});
-  multiplier=1;respawnFrames=75;coyote=0;jumpBuffer=0;deathLock=false;
+  groundedY=player.y;standingOn=choice;
+  multiplier=1;respawnFrames=75;coyote=0;jumpBuffer=0;jumpHeld=false;deathLock=false;
   sfx.life();toast(lives+' LIVES LEFT','#ff7d87');
 }
 
@@ -484,15 +624,19 @@ function simulate(){
   wind+=(windTarget-wind)*.011;
 
   let input=0;
-  if(keys.left){input-=MOVE_SPEED;player.face=-1}
-  if(keys.right){input+=MOVE_SPEED;player.face=1}
+  if(held('left')){input-=MOVE_SPEED;player.face=-1}
+  if(held('right')){input+=MOVE_SPEED;player.face=1}
 
   const altitude=-player.y/PPM;
   if(altitude>peak){score+=(altitude-peak)*multiplier;peak=altitude}
 
   player.vx=input+(altitude>WIND_START_M?wind:0);
 
-  if(keys.jump)jumpBuffer=JUMP_BUFFER_FRAMES;
+  /* edge-triggered jump: one press, one jump, no auto-bounce */
+  const wantJump=held('jump');
+  if(wantJump&&!jumpHeld)jumpBuffer=JUMP_BUFFER_FRAMES;
+  jumpHeld=wantJump;
+
   const canJump=player.grounded||coyote>0;
   if(jumpBuffer>0&&canJump){
     player.vy=JUMP_SPEED;player.grounded=false;player.falling=true;player.fallStart=player.y;
@@ -501,17 +645,18 @@ function simulate(){
 
   player.vy=Math.min(player.vy+GRAVITY,TERMINAL);
   if(player.vy>diagStats.maxVy)diagStats.maxVy=player.vy;
-  if(!player.grounded&&player.vy>0&&!player.falling){player.falling=true;player.fallStart=player.y}
+  /* FIX 5: a walk-off starts the fall at the ledge, not one frame below it */
+  if(!player.grounded&&player.vy>0&&!player.falling){player.falling=true;player.fallStart=Math.min(player.y,groundedY)}
 
   const wasGrounded=player.grounded;
   player.grounded=false;
   const landed=moveAndCollide();
 
   if(landed){
-    player.grounded=true;coyote=COYOTE_FRAMES;
+    player.grounded=true;coyote=COYOTE_FRAMES;groundedY=player.y;standingOn=landed;
     if(player.falling){player.falling=false;landingDamage();if(state!=='play')return}
     if(landed.type==='bank'&&multiplier>bestMultiplier){bestMultiplier=multiplier;sfx.bank();toast('BANKED x'+multiplier.toFixed(1),'#70f7a4')}
-  } else if(wasGrounded&&coyote===0){
+  }else if(wasGrounded&&coyote===0){
     coyote=COYOTE_FRAMES;
   }
 
@@ -528,7 +673,8 @@ function simulate(){
   while(topY-camera>-H*1.7&&guard++<8)addPlatform();
 
   const respawnLine=-peak*PPM+120,keepBand=H*1.4;
-  if(platforms.length>110)platforms=platforms.filter(p=>p.type==='ground'||Math.abs(p.y-respawnLine)<keepBand||p.y-camera<H+500);
+  /* BUILD 11: p===standingOn — the ledge under the player is never culled */
+  if(platforms.length>110)platforms=platforms.filter(p=>p.type==='ground'||p===standingOn||Math.abs(p.y-respawnLine)<keepBand||p.y-camera<H+500);
   if(cells.length>80)cells=cells.filter(c=>!c.got&&(Math.abs(c.y-respawnLine)<keepBand||c.y-camera<H+500));
 
   const targetCamera=player.y-H*.62;
@@ -540,103 +686,76 @@ function simulate(){
 
 /* ---------------- PAUSE / END ---------------- */
 function pauseGame(){if(state!=='play')return;releaseInputs();setState('paused');showScreen('pause');ui.pauseStats.innerHTML=`SCORE <b>${Math.floor(score)}</b><br>BEST <b>${Math.max(bestScore,Math.floor(score))}</b><br>ALTITUDE <b>${Math.floor(peak)} M</b><br>MULTIPLIER <b>x${multiplier.toFixed(1)}</b><br>LIVES <b>${lives}</b>`;setMix(.22);sfx.pause()}
-function resumeGame(){if(state!=='paused')return;releaseInputs();showScreen('none');setState('play');setMix(.62);accumulator=0;lastTime=performance.now();sfx.resume()}
-function endRun(){if(state!=='paused')return;showStartScreen()}
-
-/* FIX 3: build 7 stripped your board entry and pushed the new score
-   unconditionally, so a 150-point run deleted a saved 3800. Your entry
-   is now only replaced when the new score actually beats it. */
+function resumeGame(){if(state!=='paused')return;releaseInputs();nudgeAudio();showScreen('none');setState('play');setMix(.62);accumulator=0;lastTime=performance.now();sfx.resume()}
+function endRun(){if(state!=='paused')return;showStartScreen();setState('start')}
 function gameOver(){
   if(state==='dead')return;
   setState('dead');releaseInputs();setMix(.42);sfx.over();
   const final=Math.floor(score),oldBest=bestScore;
-  const newBest=final>bestScore;
-  if(newBest){bestScore=final;save('pb_best8',String(bestScore))}
-
-  const mine=board.find(o=>o.n==='YOU');
-  const improved=!mine||final>mine.s;
-  if(improved){
-    board=board.filter(o=>o.n!=='YOU');
-    board.push({n:'YOU',s:final});
-    board.sort((a,b)=>b.s-a.s);
-    board=board.slice(0,5);
-    saveBoard();
-  }
-  const rank=board.findIndex(o=>o.n==='YOU'&&o.s===final)+1;
-  lastRecord={score:final,alt:Math.floor(peak),mult:bestMultiplier.toFixed(1),rank:rank||board.length,of:board.length,newBest,oldBest};
-  drawBoard(rank-1);
+  if(final>bestScore){bestScore=final;save('pb_best8',String(bestScore))}
+  /* FIX 2: earlier YOU rows are kept — a small run no longer deletes a big one.
+     FIX 3: rank is found by identity, so a duplicate score cannot fake it. */
+  const entry={n:'YOU',s:final};
+  board.push(entry);
+  board.sort((a,b)=>b.s-a.s);
+  board=board.slice(0,5);
+  const rank=board.indexOf(entry)+1;
+  saveBoard();
+  lastRecord={score:final,alt:Math.floor(peak),mult:bestMultiplier.toFixed(1),rank:rank,of:board.length,newBest:final>oldBest};
   if(rank>0&&rank<=3)showDossier(lastRecord);
-  else{showStartScreen();setState('dead');ui.startButton.textContent='PLAY AGAIN';ui.blink.textContent='THE CABINET REMEMBERS'}
+  else{showStartScreen();setState('dead');ui.startButton.textContent='PLAY AGAIN';ui.blink.textContent='THE CABINET REMEMBERS';drawBoard(rank-1)}
 }
 function showDossier(r){
   setState('dead');showScreen('dossier');
   $('finalScore').textContent=r.score;
   $('finalAlt').textContent=r.alt+' M';
   $('finalMult').textContent='x'+r.mult;
-  $('finalRank').textContent=r.rank+' / '+r.of;
-  $('rankText').textContent='RANK '+r.rank+' OF '+r.of;
-  $('caseNo').textContent=caseNumber(r.score,r.rank);
-  const stamp=$('pbStamp'),delta=$('recordDelta');
-  stamp.classList.toggle('on',r.newBest);
-  if(r.newBest)delta.innerHTML=r.oldBest>0?`▲ BEAT YOUR OLD BEST BY ${r.score-r.oldBest} POINTS`:'▲ FIRST RECORD ON THIS CABINET';
-  else delta.innerHTML=r.oldBest>r.score?`YOUR BEST STANDS AT ${r.oldBest} — ${r.oldBest-r.score} TO GO`:'&nbsp;';
-  const lead=r.rank===1?`At <em>${r.alt} metres</em> this climb is the reference figure every other operator on Cabinet 07 will be measured against. No one has logged higher.`
-    :r.rank===2?`<em>${r.alt} metres</em> places you second on this cabinet. One operator above you. The gap is closable.`
-    :`<em>${r.alt} metres</em> clears the threshold for contact. Two operators have logged higher. Your file remains open.`;
-  $('verdict').innerHTML=`${lead}<br><br>The subject is designated <em>THE COUNTERFEIT</em>. Every recovered identity was a forgery of someone who never existed. A pirate broadcast follows him, carrying the attract tone of this cabinet.<br><br>Three unrelated systems produced the same phrase: <em>INSERT COINS, INVERT MINDS</em>.`;
-  sfx.commend();
-  if(r.newBest)setTimeout(()=>sfx.stamp(),520);
+  $('finalRank').textContent=(r.rank>0?r.rank:'—')+' / '+r.of;
+  $('rankText').textContent='RANK '+(r.rank>0?r.rank:'—')+' OF '+r.of;
+  $('caseNo').textContent=caseNumber(r.score,r.rank||r.of);
+  /* score restated with the channel link, right under the record */
+  $('linkScore').textContent='SCORE '+r.score+(r.newBest?' — NEW PERSONAL BEST':'');
+  const link=$('fileLink');
+  link.href=COMPLETE_FILE_URL;
+  link.textContent=COMPLETE_FILE_URL.replace(/^https?:\/\//,'');
 }
 function caseNumber(s,r){const seed=s+4139;return String(21+seed%4)+'-'+String.fromCharCode(65+seed%7)+'-'+('000'+seed%10000).slice(-4)+'/'+r}
-function copyRecord(){if(!lastRecord)return;const r=lastRecord,text=`POLYBIUS — TOWER D21\nSCORE ${r.score} | ALTITUDE ${r.alt} M | BEST MULT x${r.mult}\nRANK ${r.rank} OF ${r.of} ON THIS CABINET\n${r.newBest?'*** NEW PERSONAL BEST ***\n':''}CASE FILE ${caseNumber(r.score,r.rank)}\nBeat it: ${COMPLETE_FILE_URL}`;const b=$('copyRecord');const done=ok=>{b.textContent=ok?'✓ RECORD COPIED':'COPY BLOCKED';setTimeout(()=>b.textContent='COPY MY RECORD',1500)};if(navigator.clipboard?.writeText)navigator.clipboard.writeText(text).then(()=>done(true)).catch(()=>fallbackCopy(text,done));else fallbackCopy(text,done)}
-function fallbackCopy(text,done){try{const t=document.createElement('textarea');t.value=text;t.style.position='fixed';t.style.opacity='0';document.body.appendChild(t);t.select();const ok=document.execCommand('copy');t.remove();done(ok)}catch{done(false)}}
+function copyRecord(){
+  if(!lastRecord)return;
+  const r=lastRecord;
+  const rankLine=r.rank>0?`RANK ${r.rank} OF ${r.of} ON THIS CABINET\n`:'';   /* FIX 3 */
+  const text=`POLYBIUS — TOWER D21\nSCORE ${r.score} | ALTITUDE ${r.alt} M | BEST MULT x${r.mult}\n${rankLine}${r.newBest?'*** NEW PERSONAL BEST ***\n':''}Beat it: ${COMPLETE_FILE_URL}`;
+  const b=$('copyRecord');
+  const done=ok=>{b.textContent=ok?'✓ RECORD COPIED':'COPY BLOCKED';setTimeout(()=>b.textContent='COPY MY RECORD',1500)};
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(()=>done(true)).catch(()=>fallbackCopy(text,done));
+  else fallbackCopy(text,done);
+}
+function fallbackCopy(text,done){try{const t=document.createElement('textarea');t.value=text;t.style.position='fixed';t.style.opacity='0';document.body.appendChild(t);t.select();const ok=document.execCommand('copy');t.remove();done(ok)}catch(e){done(false)}}
 
-/* ---------------- SKY ----------------
-   FIX 1: the palette is BEAT-DRIVEN again. Build 7 read it straight off
-   performance.now()/650, a wall clock that never aligns with any tempo
-   (ratio 0.98 at 90 BPM, 1.08 at 100, 1.30 at 120, 1.89 at 174), so the
-   biggest visual in the game drifted against the track. paletteIndex now
-   advances inside the beat branch of sampleBeat(), with paletteMix
-   cross-fading fast so the colour SNAPS instead of cutting. skyHold is a
-   3.5s safety net for silence, a breakdown, or a missing file. */
-const palettes=[
- ['#17083d','#6510a4'],['#042e38','#00a9bd'],['#300031','#bd177d'],['#08280f','#1fc84a'],
- ['#351000','#ed5e1d'],['#001735','#1c60e8'],['#330021','#f1277b'],['#102d00','#91dc18'],
- ['#001b2e','#00d4ff'],['#2e0016','#ff4fa3'],['#12002e','#7b2fff'],['#00230f','#3dff9e'],
- ['#2a0050','#8a2bff'],['#40001a','#ff1744'],['#1a2a00','#ffd400'],['#00312b','#00e6a0']
-];
-const SKY_HOLD=3.5;
-let paletteIndex=0,palettePrev=0,paletteMix=1,skyHold=SKY_HOLD;
-function resetSky(){paletteIndex=0;palettePrev=0;paletteMix=1;skyHold=SKY_HOLD;flash=0;beatPulse=0;syntheticBeatAt=0}
-function advancePalette(){palettePrev=paletteIndex;paletteIndex=(paletteIndex+1)%palettes.length;paletteMix=0;skyHold=SKY_HOLD}
-function makeShapes(){shapes=Array.from({length:12},()=>({x:Math.random(),y:Math.random(),r:20+Math.random()*70,sides:3+Math.floor(Math.random()*6),a:Math.random()*6.28,v:(Math.random()<.5?-1:1)*(.15+Math.random()*.55),h:Math.floor(Math.random()*palettes.length),drift:0,driftV:0,depth:.3+Math.random()*.7}))}
+/* ---------------- SKY ---------------- */
+const palettes=[['#17083d','#6510a4'],['#042e38','#00a9bd'],['#300031','#bd177d'],['#08280f','#1fc84a'],['#351000','#ed5e1d'],['#001735','#1c60e8'],['#330021','#f1277b'],['#102d00','#91dc18']];
+function makeShapes(){shapes=Array.from({length:14},()=>({x:Math.random(),y:Math.random(),r:20+Math.random()*70,sides:3+Math.floor(Math.random()*6),a:Math.random()*6.28,v:(Math.random()<.5?-1:1)*(.15+Math.random()*.55),h:Math.floor(Math.random()*palettes.length),drift:0,driftV:0,depth:.3+Math.random()*.7}))}
 makeShapes();
-let bassAvg=0;
-function mixHex(a,b,t){const p=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];const A=p(a),B=p(b);return `rgb(${Math.round(A[0]+(B[0]-A[0])*t)},${Math.round(A[1]+(B[1]-A[1])*t)},${Math.round(A[2]+(B[2]-A[2])*t)})`}
+let bassAvg=0,lastRealBeat=0;
 function sampleBeat(dt,now){
   beatPulse=Math.max(0,beatPulse-dt*4.2);
   flash=Math.max(0,flash-dt*4.2);
-  if(paletteMix<1)paletteMix=Math.min(1,paletteMix+dt*7);
-  skyHold-=dt;
-  let real=false;
-  if(analyser&&freq&&trackPlaying){
+  let beat=false;
+  if(analyser&&freq&&trackPlaying&&AC&&AC.state==='running'){
     analyser.getByteFrequencyData(freq);
     let sum=0;for(let i=2;i<=7;i++)sum+=freq[i];
-    const bass=sum/6;
-    bassAvg=bassAvg*.91+bass*.09;
-    if(bass>8&&bass>bassAvg*1.3&&now-lastRealBeat>.19){lastRealBeat=now;real=true}
+    const bassNow=sum/6;
+    bassAvg=bassAvg*.91+bassNow*.09;
+    if(bassNow>8&&bassNow>bassAvg*1.3&&now-lastRealBeat>.19){lastRealBeat=now;beat=true}
   }
-  const synth=!real&&!trackPlaying&&now>=syntheticBeatAt;
-  if(real||synth){
-    if(synth)syntheticBeatAt=now+.6;
-    diagStats.beats++;
+  if(!beat&&AC&&beatQueue.length){                 /* synth beats, sample-accurate */
+    const t=AC.currentTime;
+    while(beatQueue.length&&beatQueue[0]<=t){beatQueue.shift();beat=true}
+  }
+  if(beat){
     beatPulse=1;
-    advancePalette();
     flash=skyMode===0?.24:skyMode===1?.08:0;
-    for(const s of shapes)s.driftV=(Math.random()-.5)*(skyMode===1?.1:.24);
-  } else if(skyHold<=0){
-    /* safety net only - silence, a breakdown, or no file */
-    advancePalette();
+    for(const s of shapes){s.driftV=(Math.random()-.5)*(skyMode===1?.1:.24);if(Math.random()<.12)s.sides=3+Math.floor(Math.random()*6)}
   }
   for(const s of shapes){
     s.a+=dt*s.v*(1+beatPulse*3);
@@ -647,20 +766,17 @@ function sampleBeat(dt,now){
   }
 }
 function drawSky(){
+  const pal=palettes[Math.floor(performance.now()/650)%palettes.length];
   if(skyMode===2){ctx.fillStyle='#070b13';ctx.fillRect(0,0,W,H)}
   else{
-    const cur=palettes[paletteIndex],prv=palettes[palettePrev];
-    const g=ctx.createLinearGradient(0,0,0,H);
-    g.addColorStop(0,mixHex(prv[0],cur[0],paletteMix));
-    g.addColorStop(1,mixHex(prv[1],cur[1],paletteMix));
-    ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+    const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,pal[0]);g.addColorStop(1,pal[1]);ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
     for(const s of shapes){
       let x=s.x+s.drift;if(x<0)x+=1;if(x>1)x-=1;
       let y=s.y*H-(camera*.05*s.depth)%(H+120);
       while(y<-120)y+=H+120;while(y>H+120)y-=H+120;
       const r=s.r*s.depth*(.85+beatPulse*.38);
       ctx.save();ctx.translate(x*W,y);ctx.rotate(s.a);
-      ctx.strokeStyle=`hsla(${s.h*44+170},100%,70%,${.12+s.depth*.2+beatPulse*.2})`;ctx.lineWidth=1.5;
+      ctx.strokeStyle=`hsla(${s.h*44+170},100%,70%,${.12+s.depth*.2})`;ctx.lineWidth=1.5;
       ctx.beginPath();
       for(let i=0;i<=s.sides;i++){const a=i/s.sides*Math.PI*2,px=Math.cos(a)*r,py=Math.sin(a)*r;i?ctx.lineTo(px,py):ctx.moveTo(px,py)}
       ctx.stroke();ctx.restore();
@@ -683,7 +799,7 @@ function draw(){
     ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-drift,y+12);ctx.stroke();
   }
   ctx.save();ctx.translate(0,-camera);
-  ctx.strokeStyle=`rgba(166,190,220,${.6+beatPulse*.3})`;ctx.lineWidth=3;
+  ctx.strokeStyle='rgba(166,190,220,.7)';ctx.lineWidth=3;
   ctx.beginPath();ctx.moveTo(W/2-16,50);ctx.lineTo(W/2-16,topY);ctx.moveTo(W/2+16,50);ctx.lineTo(W/2+16,topY);ctx.stroke();
   ctx.lineWidth=1.5;
   for(let y=50;y>topY;y-=26){ctx.beginPath();ctx.moveTo(W/2-16,y);ctx.lineTo(W/2+16,y-13);ctx.moveTo(W/2+16,y);ctx.lineTo(W/2-16,y-13);ctx.stroke()}
@@ -698,16 +814,17 @@ function draw(){
     if(c.got||c.y-camera<-50||c.y-camera>H+50)continue;
     c.phase+=.08;
     ctx.save();ctx.translate(c.x,c.y+Math.sin(c.phase)*3);
-    ctx.fillStyle='#b8f1ff';ctx.fillRect(-5,-5,10,10);
-    ctx.fillStyle='#7ce4ff';ctx.fillRect(-7,-7,14,2);ctx.fillRect(-7,5,14,2);
+    ctx.shadowColor='#5ad8ff';ctx.shadowBlur=14;ctx.fillStyle='#b8f1ff';
+    ctx.fillRect(-5,-5,10,10);ctx.shadowBlur=0;
     ctx.fillStyle='#05141b';ctx.fillRect(-2,-2,4,4);ctx.restore();
   }
-  if(!(respawnFrames>0&&Math.floor(respawnFrames/9)%2===0)){
+  if(!(respawnFrames>0&&Math.floor(respawnFrames/5)%2===0)){
     ctx.save();ctx.translate(player.x,player.y);
     ctx.fillStyle='#03050a';ctx.fillRect(-3,-3,PLAYER_W+6,PLAYER_H+6);
     ctx.fillStyle='#e9eef7';ctx.fillRect(0,6,PLAYER_W,PLAYER_H-6);
     ctx.fillStyle='#f6f9ff';ctx.fillRect(1,0,PLAYER_W-2,7);
-    ctx.fillStyle='#7ce4ff';ctx.fillRect(player.face>0?PLAYER_W-5:2,2,3,2);
+    ctx.shadowColor='#5ad8ff';ctx.shadowBlur=9;ctx.fillStyle='#7ce4ff';
+    ctx.fillRect(player.face>0?PLAYER_W-5:2,2,3,2);
     ctx.restore();
   }
   ctx.restore();
@@ -715,13 +832,26 @@ function draw(){
 }
 
 /* ---------------- INPUT ---------------- */
-function releaseInputs(){keys.left=keys.right=keys.jump=false;document.querySelectorAll('.pad').forEach(p=>p.classList.remove('on'))}
-function bindButton(el,fn){el.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();fn()})}
+function releaseInputs(){keys.left=keys.right=keys.jump=false;padKeys.left=padKeys.right=padKeys.jump=false;touchKeys.left=touchKeys.right=touchKeys.jump=false;jumpHeld=false;document.querySelectorAll('.pad').forEach(p=>p.classList.remove('on'))}
+/* FIX 7: click plus a de-duplicated touch pointerup, so a tap that drifts still counts */
+function bindButton(el,fn){
+  let last=0;
+  const run=e=>{
+    if(e){e.preventDefault();e.stopPropagation()}
+    const t=performance.now();
+    if(t-last<350)return;
+    last=t;
+    fn();
+  };
+  el.addEventListener('click',run);
+  el.addEventListener('pointerup',e=>{if(e.pointerType==='touch')run(e)});
+}
 bindButton(ui.coin,insertCoin);
-bindButton(ui.startButton,()=>startGame());
+bindButton(ui.startButton,startGame);
 bindButton(ui.pauseTop,pauseGame);
 bindButton(ui.resume,resumeGame);
 bindButton(ui.quit,endRun);
+bindButton(ui.soundButton,toggleSound);
 bindButton(ui.skyButton,()=>{skyMode=(skyMode+1)%3;ui.skyButton.textContent=['SKY: FLASHER','SKY: CALM','SKY: PLAIN'][skyMode]});
 bindButton(ui.diagButton,toggleDiag);
 bindButton($('backButton'),showStartScreen);
@@ -729,10 +859,14 @@ bindButton($('copyRecord'),copyRecord);
 bindButton($('openFile'),()=>window.open(COMPLETE_FILE_URL,'_blank','noopener'));
 function toggleDiag(){diagOn=!diagOn;ui.diagButton.textContent='DIAGNOSTICS: '+(diagOn?'ON':'OFF');ui.diag.classList.toggle('on',diagOn&&(state==='play'||state==='paused'))}
 
+/* FIX 9: show the pads on any device that reports a real touch */
+addEventListener('touchstart',()=>document.body.classList.add('touch'),{passive:true,once:true});
+
+/* FIX 8: pads own touchKeys, so keyboard and gamepad cannot clear them */
 function bindPad(id,key){
   const el=$(id);
-  const down=e=>{e.preventDefault();if(state!=='play')return;keys[key]=true;el.classList.add('on');try{el.setPointerCapture(e.pointerId)}catch{}};
-  const up=e=>{if(e?.preventDefault)e.preventDefault();keys[key]=false;el.classList.remove('on')};
+  const down=e=>{e.preventDefault();if(state!=='play')return;touchKeys[key]=true;el.classList.add('on');try{el.setPointerCapture(e.pointerId)}catch(err){}};
+  const up=e=>{if(e&&e.preventDefault)e.preventDefault();touchKeys[key]=false;el.classList.remove('on')};
   el.addEventListener('pointerdown',down);
   el.addEventListener('pointerup',up);
   el.addEventListener('pointercancel',up);
@@ -742,17 +876,14 @@ bindPad('leftPad','left');bindPad('rightPad','right');bindPad('jumpPad','jump');
 addEventListener('pointerup',()=>{if(state!=='play')releaseInputs()},{passive:true});
 addEventListener('blur',()=>{releaseInputs();if(state==='play')pauseGame()});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&state==='play')pauseGame()});
-
-/* keydown is a valid audio-unlock gesture, so SPACE / ENTER / X / Z all
-   drop the credit from the attract screen */
-const isConfirmKey=k=>k===' '||k==='Enter'||k==='x'||k==='X'||k==='z'||k==='Z';
 document.addEventListener('keydown',e=>{
   const k=e.key;
   if(k==='0'){e.preventDefault();toggleDiag();return}
+  if(k==='m'||k==='M'){e.preventDefault();toggleSound();return}
   if((k==='p'||k==='P'||k==='Escape')&&(state==='play'||state==='paused')){e.preventDefault();state==='play'?pauseGame():resumeGame();return}
-  if(state==='attract'&&isConfirmKey(k)){e.preventDefault();insertCoin();return}
-  if((state==='start'||state==='dead')&&isConfirmKey(k)){e.preventDefault();startGame();return}
-  if(state==='paused'&&isConfirmKey(k)){e.preventDefault();resumeGame();return}
+  if(state==='attract'&&(k===' '||k==='Enter')){e.preventDefault();insertCoin();return}
+  if((state==='start'||state==='dead')&&(k===' '||k==='Enter')){e.preventDefault();startGame();return}
+  if(state==='paused'&&(k===' '||k==='Enter')){e.preventDefault();resumeGame();return}
   if(k==='ArrowLeft'||k==='a'||k==='A')keys.left=true;
   if(k==='ArrowRight'||k==='d'||k==='D')keys.right=true;
   if(k===' '||k==='ArrowUp'||k==='w'||k==='W')keys.jump=true;
@@ -765,49 +896,34 @@ document.addEventListener('keyup',e=>{
   if(k===' '||k==='ArrowUp'||k==='w'||k==='W')keys.jump=false;
 });
 
-/* ---------------- GAMEPAD ----------------
-   FIX 2: btn(9) used to sit in BOTH the pause check and the confirm
-   check, so one press of START paused and then immediately resumed in
-   the same poll - the pause lasted zero frames. And pause required
-   standard mapping, so START was dead on non-standard pads, which is
-   why the top-corner tap worked and START did not.
-   Roles are now disjoint: START/SELECT pause on ANY pad, confirm is
-   face buttons only, and pauseFired blocks a simultaneous START+A from
-   cancelling itself. */
-let padConfirmPrev=false,padPausePrev=false,padPromptUntil=0;
+let padPrev=false,padPausePrev=false,padPromptUntil=0;
 function pollGamepad(now){
   if(!navigator.getGamepads)return;
-  let gp;try{gp=Array.from(navigator.getGamepads()).find(Boolean)}catch{return}
-  if(!gp)return;
-  const btn=n=>!!gp.buttons?.[n]?.pressed;
+  let gp;try{gp=Array.from(navigator.getGamepads()).find(Boolean)}catch(err){return}
+  if(!gp){padKeys.left=padKeys.right=padKeys.jump=false;return}
+  const btn=n=>!!(gp.buttons&&gp.buttons[n]&&gp.buttons[n].pressed);
   const standard=gp.mapping==='standard';
-
-  const pauseHeld=btn(9)||btn(8);
-  const confirmHeld=btn(0)||btn(1)||btn(2)||btn(3);
-
-  let pauseFired=false;
-  if(pauseHeld&&!padPausePrev&&(state==='play'||state==='paused')){
-    state==='play'?pauseGame():resumeGame();
-    pauseFired=true;
-  }
-  padPausePrev=pauseHeld;
-
+  const any=!!(gp.buttons&&gp.buttons.some(b=>b.pressed));
+  const confirm=standard?(btn(0)||btn(1)||btn(8)||btn(9)):any;
+  const pause=standard&&btn(9);
+  if(pause&&!padPausePrev&&(state==='play'||state==='paused'))state==='play'?pauseGame():resumeGame();
+  padPausePrev=pause;
   if(state==='play'){
-    const axis=gp.axes?.[0]||0;
-    keys.left=axis<-.28||(standard&&btn(14));
-    keys.right=axis>.28||(standard&&btn(15));
-    keys.jump=standard?(btn(0)||btn(3)||btn(12)):confirmHeld;
+    const axis=(gp.axes&&gp.axes[0])||0;
+    padKeys.left=axis<-.28||(standard&&btn(14));
+    padKeys.right=axis>.28||(standard&&btn(15));
+    padKeys.jump=standard?(btn(0)||btn(3)||btn(12)):any;
+  }else{
+    padKeys.left=padKeys.right=padKeys.jump=false;
   }
-
-  if(confirmHeld&&!padConfirmPrev&&!pauseFired){
+  if(confirm&&!padPrev){
     if(state==='attract'){padPromptUntil=now+10;ui.coin.classList.add('hint')}
     else if(state==='start'||state==='dead')startGame();
     else if(state==='paused')resumeGame();
   }
-  padConfirmPrev=confirmHeld;
-
+  padPrev=confirm;
   if(state==='attract'){
-    if(padPromptUntil>now)ui.padPrompt.textContent=Math.floor(now*3)%2?'▼ TAP THE COIN ▼':' ';
+    if(padPromptUntil>now)ui.padPrompt.textContent=Math.floor(now*3)%2?'▼ PRESS THE COIN — A PAD CANNOT START THE SOUND ▼':' ';
     else{ui.padPrompt.innerHTML='&nbsp;';ui.coin.classList.remove('hint')}
   }
 }
@@ -818,23 +934,23 @@ function loop(t){
   lastTime=t;
   const now=t/1000;
   pollGamepad(now);
-  if(state==='play'||state==='paused'){
-    sampleBeat(dt,now);
-    if(state==='play'){
-      accumulator+=dt;
-      let steps=0;
-      while(accumulator>=FIXED_DT&&steps<MAX_STEPS&&state==='play'){simulate();accumulator-=FIXED_DT;steps++}
-      if(accumulator>FIXED_DT*MAX_STEPS)accumulator=0;
-    }
-    draw();
+  scheduleSynth();
+  sampleBeat(dt,now);
+  if(state==='play'){
+    accumulator+=dt;
+    let steps=0;
+    while(accumulator>=FIXED_DT&&steps<MAX_STEPS&&state==='play'){simulate();accumulator-=FIXED_DT;steps++}
+    if(accumulator>FIXED_DT*MAX_STEPS)accumulator=0;
   }
+  if(state==='play'||state==='paused')draw();
   requestAnimationFrame(loop);
 }
 
 /* ---------------- BOOT ---------------- */
 ui.best.textContent='BEST '+bestScore;
 drawBoard();
-makeTrack();
+$('fileLink').href=COMPLETE_FILE_URL;
+$('fileLink').textContent=COMPLETE_FILE_URL.replace(/^https?:\/\//,'');
 showScreen('attract');
 setState('attract');
 requestAnimationFrame(loop);
