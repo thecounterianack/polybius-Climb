@@ -18,6 +18,9 @@
 
       Song.mp3
 
+ Filenames are case sensitive on GitHub Pages and most hosts.
+ If your file is song.mp3 (lowercase), change TRACK_FILE below.
+
  Do NOT set crossOrigin on the audio element - it taints the
  media element source and results in silence.
 
@@ -27,20 +30,24 @@
    3. GAME     - the climb. Song continues, sfx on top.
    4. OVER     - game over panel, or the Bureau dossier at rank 3+.
 
- The song is started ONCE by the coin press and loops all session.
+ PAUSE
+   Tap the II button top-centre, or press P / Escape.
+   Endless climber with no timer, so a plain freeze is fair:
+   nothing is gained or lost by pausing. The song keeps playing
+   at a lower level because it is started once by the coin and
+   is never restarted for the whole session.
+   Auto-pauses when the tab is hidden or the window loses focus.
 
- DIFFICULTY (this build)
-   Ramp runs to 900 m, not 300 m. Platforms start wide and close,
-   end narrow and far. Verified against jump physics:
-     jump apex 101 px, airtime 37 frames,
-     horizontal reach 94 px calm / 74 px worst headwind.
-   Max vertical gap 86 px and max spread 46 px both stay inside
-   those limits, so no platform is ever physically unreachable.
+ DIFFICULTY
+   Ramp runs to 900 m, not 300 m. Verified against jump physics:
+   jump apex 101 px, airtime 37 frames, reach 94 px calm /
+   74 px worst headwind. Max gap 86 px and max spread 46 px both
+   stay inside those limits, so no platform is unreachable.
 
  WIND
-   gust now eases toward gustTarget instead of snapping, and its
-   ceiling scales with altitude. Shown in the HUD and drawn in the
-   world; the rain drift is tied to it so storm and physics agree.
+   gust eases toward gustTarget instead of snapping, and its
+   ceiling scales with altitude. Shown in the HUD and drawn in
+   the world; rain drift is tied to it.
  ====================================================================
 -->
 <style>
@@ -57,6 +64,13 @@ canvas{display:block;position:absolute;top:0;left:0;touch-action:none;}
 #mul{color:#ffb84a;font-size:11px;font-weight:700;margin-top:4px;}
 #wind{color:#5ad8ff;font-size:11px;font-weight:700;letter-spacing:2px;margin-top:4px;min-height:13px;}
 #windlb{color:#59637a;font-size:8px;letter-spacing:2px;}
+
+/* pause button */
+#pbtn{position:absolute;top:calc(env(safe-area-inset-top) + 6px);left:50%;transform:translateX(-50%);
+ width:44px;height:34px;border:1px solid #2a3444;background:rgba(10,14,22,.72);color:#5ad8ff;
+ font-family:inherit;font-size:13px;font-weight:700;letter-spacing:2px;border-radius:3px;
+ display:none;z-index:7;touch-action:manipulation;}
+#pbtn.on{display:block;}
 
 /* ---------- shared overlay ---------- */
 .scr{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:20;text-align:center;padding:20px;overflow-y:auto;}
@@ -101,6 +115,15 @@ canvas{display:block;position:absolute;top:0;left:0;touch-action:none;}
 #blink{color:#ffb84a;font-size:9px;letter-spacing:3px;margin-top:7px;animation:bk 1.1s steps(2,end) infinite;}
 @keyframes bk{0%,49%{opacity:1}50%,100%{opacity:0}}
 
+/* ---------- PAUSE overlay ---------- */
+#pz{background:rgba(4,5,9,.90);z-index:25;}
+#pztitle{color:#5ad8ff;font-size:15px;letter-spacing:6px;margin-bottom:14px;}
+#pzstat{color:#8c96a7;font-size:11px;line-height:1.7;margin-bottom:16px;}
+#pzstat b{color:#5ad8ff;font-weight:400;}
+#pzresume{padding:16px 44px;background:#5ad8ff;color:#04121a;border:none;font-family:inherit;font-size:13px;font-weight:700;letter-spacing:2px;border-radius:3px;touch-action:manipulation;}
+#pzquit{margin-top:11px;padding:11px 28px;background:transparent;color:#6f7a8c;border:1px solid #2a3444;font-family:inherit;font-size:10px;font-weight:700;letter-spacing:2px;border-radius:3px;touch-action:manipulation;}
+#pzhint{color:#3f4756;font-size:8px;letter-spacing:2px;margin-top:14px;}
+
 #pads{position:absolute;bottom:0;left:0;right:0;height:36%;display:none;z-index:6;}
 .pad{position:absolute;bottom:calc(env(safe-area-inset-bottom) + 14px);width:78px;height:78px;border:2px solid rgba(255,255,255,.2);border-radius:50%;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.55);font-size:22px;background:rgba(255,255,255,.05);}
 #pl{left:14px;} #pr{left:102px;} #pj{right:14px;width:94px;height:94px;}
@@ -138,6 +161,7 @@ canvas{display:block;position:absolute;top:0;left:0;touch-action:none;}
     <div id="mul">x1</div><div id="hp"><div id="hpf"></div></div>
     <div id="wind">&#8212;</div><div id="windlb">WIND</div></div>
 </div>
+<button id="pbtn">&#10073;&#10073;</button>
 <div id="pads"><div class="pad" id="pl">&#9664;</div><div class="pad" id="pr">&#9654;</div><div class="pad" id="pj">&#9650;</div></div>
 
 <!-- 1. ATTRACT -->
@@ -168,6 +192,20 @@ canvas{display:block;position:absolute;top:0;left:0;touch-action:none;}
   <button id="startbtn">PRESS START</button>
   <div id="credit">CREDIT 01</div>
   <div id="blink">PRESS START</div>
+</div>
+
+<!-- PAUSE -->
+<div id="pz" class="scr">
+  <div id="pztitle">PAUSED</div>
+  <div id="pzstat">
+    SCORE <b id="pzsc">0</b><br>
+    ALTITUDE <b id="pzalt">0 m</b><br>
+    MULTIPLIER <b id="pzmul">x1</b><br>
+    LIVES <b id="pzlv">3</b>
+  </div>
+  <button id="pzresume">RESUME</button>
+  <button id="pzquit">END RUN</button>
+  <div id="pzhint">P OR ESC &mdash; START &mdash; PAD START</div>
 </div>
 
 <!-- 4. DOSSIER -->
@@ -249,12 +287,13 @@ var YT_URL='https://youtube.com/@x-ackley';
 var DOSSIER_RANK=3;
 var LIVES_PER_CREDIT=3;
 
-/* difficulty ramp length in metres (was effectively 300) */
+/* difficulty ramp length in metres */
 var RAMP=900;
 
 /* master level per screen */
 var VOL_START=0.42;
 var VOL_GAME=0.62;
+var VOL_PAUSE=0.22;
 var HUM_ATTRACT=0.30;
 
 /* ============== AUDIO ============== */
@@ -375,6 +414,8 @@ var SFX={
   over:function(){[392,330,262,196].forEach(function(f,i){setTimeout(function(){blip(f,0.28,'triangle',0.24);},i*170);});},
   record:function(){[523,659,784,1047,1319].forEach(function(f,i){setTimeout(function(){blip(f,0.16,'square',0.22);},i*90);});},
   thunder:function(){noise(0.9,0.20,180,'lowpass');},
+  pause:function(){blip(392,0.10,'square',0.16,300);},
+  unpause:function(){blip(523,0.10,'square',0.18,700);},
   contact:function(){[1400,1100,880,660,523].forEach(function(f,i){
     setTimeout(function(){blip(f,0.30,'sine',0.20);},i*150);});
    setTimeout(function(){noise(1.1,0.10,1800,'bandpass');},120);}
@@ -439,15 +480,25 @@ function mixGame(){
   vinylTo(0.0);
   if(rainGain) rainGain.gain.value=0.05;
 }
+function mixPause(){
+  if(master) master.gain.value=VOL_PAUSE;
+  vinylTo(0.30);
+  if(rainGain) rainGain.gain.value=0.01;
+}
 
 /* ============== GAME ============== */
 var cv=document.getElementById('c'),cx=cv.getContext('2d');
 var att=document.getElementById('att');
 var ov=document.getElementById('ov');
 var dos=document.getElementById('dos');
+var pz=document.getElementById('pz');
 var coin=document.getElementById('coin');
 var startbtn=document.getElementById('startbtn');
 var pads=document.getElementById('pads');
+var pbtn=document.getElementById('pbtn');
+var pzresume=document.getElementById('pzresume'),pzquit=document.getElementById('pzquit');
+var pzsc=document.getElementById('pzsc'),pzalt=document.getElementById('pzalt');
+var pzmul=document.getElementById('pzmul'),pzlv=document.getElementById('pzlv');
 var elSc=document.getElementById('sc'),elHp=document.getElementById('hpf'),elMul=document.getElementById('mul');
 var elLives=document.getElementById('lives'),fl=document.getElementById('fl'),toast=document.getElementById('toast');
 var elWind=document.getElementById('wind');
@@ -466,8 +517,7 @@ if(('ontouchstart' in window)||navigator.maxTouchPoints>0)pads.style.display='bl
 var GRAV=0.62,MOVE=2.55,JUMP=-11.5,TERM=15.5,PLW=13,PLH=22;
 var SAFE=3,HURT=4.5,FATAL=6,PPM=13;
 
-/* board tuned so rank 3 is a few honest attempts, rank 1 is a real climb.
-   ~1150 = about 380 m, ~2400 = about 520 m, ~4200 = about 790 m. */
+/* board tuned so rank 3 is a few honest attempts, rank 1 is a real climb */
 var DEF=[{n:'T.S.SPECTRE',s:4200},{n:'ALI3N LEE',s:2400},{n:'K.HALLORAN',s:1150}];
 
 var board=[];
@@ -483,7 +533,7 @@ function drawBoard(ni){var h='';
  rows.innerHTML=h;}
 drawBoard(-1);
 
-/* st: 'attract' | 'start' | 'play' | 'dead' */
+/* st: 'attract' | 'start' | 'play' | 'paused' | 'dead' */
 var plats=[],cells=[],st='attract',cam=0,shake=0,gust=0,gustTarget=0,gustT=0,lit=0;
 var p={x:0,y:0,vx:0,vy:0,grd:false,fallY:0,falling:false,hp:100,face:1};
 var score=0,mul=1,bestMul=1,peak=0,topY=0,nextSide=0,idx=0,lives=LIVES_PER_CREDIT,respawnT=0;
@@ -531,12 +581,16 @@ function showAttract(){
   att.style.display='flex';
   ov.style.display='none';
   dos.style.display='none';
+  pz.style.display='none';
+  pbtn.classList.remove('on');
   mixAttract();
 }
 function showStartScreen(){
   st='start';
   att.style.display='none';
   dos.style.display='none';
+  pz.style.display='none';
+  pbtn.classList.remove('on');
   ttl.innerHTML='POLY<b>BIUS</b>';
   sub2.textContent='TOWER \u2014 '+LIVES_PER_CREDIT+' LIVES';
   msg.innerHTML='The tower does not end. Climb until your lives run out.<br>'+
@@ -549,6 +603,53 @@ function showStartScreen(){
   ov.style.display='flex';
   mixStart();
 }
+
+/* ---------- PAUSE ----------
+   Endless climber, no timer, so freezing is fair. Inputs are
+   cleared so a held pad direction does not carry into resume. */
+function pauseGame(){
+  if(st!=='play') return;
+  st='paused';
+  K.l=false;K.r=false;K.j=false;
+  pzsc.textContent=Math.floor(score);
+  pzalt.textContent=Math.floor(peak)+' m';
+  pzmul.textContent='x'+mul.toFixed(1);
+  pzlv.textContent=String(lives);
+  pz.style.display='flex';
+  pbtn.classList.remove('on');
+  mixPause();
+  SFX.pause();
+}
+function resumeGame(){
+  if(st!=='paused') return;
+  st='play';
+  K.l=false;K.r=false;K.j=false;
+  pz.style.display='none';
+  pbtn.classList.add('on');
+  mixGame();
+  SFX.unpause();
+}
+function togglePause(){
+  if(st==='play') pauseGame();
+  else if(st==='paused') resumeGame();
+}
+function quitRun(){
+  if(st!=='paused') return;
+  pz.style.display='none';
+  gameOver();
+}
+pbtn.addEventListener('click',function(e){e.stopPropagation();pauseGame();});
+pbtn.addEventListener('touchend',function(e){e.preventDefault();e.stopPropagation();pauseGame();},{passive:false});
+pzresume.addEventListener('click',function(e){e.stopPropagation();resumeGame();});
+pzresume.addEventListener('touchend',function(e){e.preventDefault();e.stopPropagation();resumeGame();},{passive:false});
+pzquit.addEventListener('click',function(e){e.stopPropagation();quitRun();});
+pzquit.addEventListener('touchend',function(e){e.preventDefault();e.stopPropagation();quitRun();},{passive:false});
+
+/* auto-pause when the tab hides or the window loses focus */
+document.addEventListener('visibilitychange',function(){
+  if(document.hidden&&st==='play') pauseGame();
+});
+window.addEventListener('blur',function(){ if(st==='play') pauseGame(); });
 
 /* THE COIN: the one user gesture that unlocks audio and starts the song */
 function insertCoin(){
@@ -576,19 +677,21 @@ coin.addEventListener('touchend',function(e){e.preventDefault();insertCoin();},{
 
 /* START: begins the climb. No audio work here - the song is already up. */
 function startGame(){
-  if(st==='play') return;
+  if(st==='play'||st==='paused') return;
   build();
   st='play';
   att.style.display='none';
   ov.style.display='none';
   dos.style.display='none';
+  pz.style.display='none';
+  pbtn.classList.add('on');
   mixGame();
   if(!songStarted&&trackEl){ songStarted=true; pushPlay(); }
 }
 startbtn.addEventListener('click',function(e){e.stopPropagation();startGame();});
 startbtn.addEventListener('touchend',function(e){e.preventDefault();e.stopPropagation();startGame();},{passive:false});
 
-/* dossier BACK returns to the board so the YouTube link stays reachable */
+/* dossier BACK returns to the board so the feed link stays reachable */
 function backToBoard(){ if(st==='play')return; showStartScreen(); }
 doscoin.addEventListener('click',function(e){e.stopPropagation();backToBoard();});
 doscoin.addEventListener('touchend',function(e){e.preventDefault();e.stopPropagation();backToBoard();},{passive:false});
@@ -596,6 +699,14 @@ dosbtn.setAttribute('href',YT_URL);
 dosbtn.addEventListener('click',function(e){e.stopPropagation();});
 
 document.addEventListener('keydown',function(e){var k=e.key;
+ if(k==='p'||k==='P'||k==='Escape'){
+   if(st==='play'||st==='paused'){e.preventDefault();togglePause();}
+   return;
+ }
+ if(st==='paused'){
+   if(k===' '||k==='Enter'){e.preventDefault();resumeGame();}
+   return;
+ }
  if(st==='attract'&&(k===' '||k==='Enter')){e.preventDefault();insertCoin();return;}
  if((st==='start'||st==='dead')&&(k===' '||k==='Enter')){e.preventDefault();startGame();return;}
  if(k==='ArrowLeft'||k==='a'||k==='A')K.l=true;
@@ -607,7 +718,7 @@ document.addEventListener('keyup',function(e){var k=e.key;
  if(k==='ArrowRight'||k==='d'||k==='D')K.r=false;
  if(k===' '||k==='ArrowUp'||k==='w'||k==='W')K.j=false;});
 function bind(id,f){var el=document.getElementById(id);
- function on(e){e.preventDefault();f(true);el.classList.add('on');}
+ function on(e){e.preventDefault();if(st!=='play')return;f(true);el.classList.add('on');}
  function off(e){e.preventDefault();f(false);el.classList.remove('on');}
  el.addEventListener('touchstart',on,{passive:false});
  el.addEventListener('touchend',off,{passive:false});
@@ -616,14 +727,20 @@ function bind(id,f){var el=document.getElementById(id);
 bind('pl',function(v){K.l=v;});bind('pr',function(v){K.r=v;});bind('pj',function(v){K.j=v;});
 
 /* ===== GAMEPAD SUPPORT ===== */
-var padPrev=false;
+var padPrev=false,padStartPrev=false;
 function pollPad(){
   if(!navigator.getGamepads)return;
   var list=navigator.getGamepads(), gp=null;
   for(var i=0;i<list.length;i++){ if(list[i]){gp=list[i];break;} }
   if(!gp)return;
   function btn(n){return !!(gp.buttons&&gp.buttons[n]&&gp.buttons[n].pressed);}
-  /* only steer while playing, so resting-stick drift cannot pre-hold a direction */
+
+  /* START (9) toggles pause during a run */
+  var ps=btn(9);
+  if(ps&&!padStartPrev&&(st==='play'||st==='paused')) togglePause();
+  padStartPrev=ps;
+
+  /* only steer while playing, so resting-stick drift cannot pre-hold */
   if(st==='play'){
     var ax=(gp.axes&&gp.axes.length)?gp.axes[0]:0;
     K.l=(ax<-0.28)||btn(14);
@@ -633,6 +750,7 @@ function pollPad(){
   var conf=btn(0)||btn(1)||btn(9)||btn(8);
   if(conf&&!padPrev){
     if(st==='attract') insertCoin();
+    else if(st==='paused') resumeGame();
     else if(st==='start'||st==='dead') startGame();
   }
   padPrev=conf;
@@ -664,6 +782,7 @@ function showDossier(rank,fin){
   dcase.textContent=caseNumber(fin,rank);
   ov.style.display='none';
   att.style.display='none';
+  pz.style.display='none';
   dos.style.display='flex';
   dos.scrollTop=0;
   SFX.contact();
@@ -671,6 +790,8 @@ function showDossier(rank,fin){
 
 function gameOver(){
   st='dead';
+  pbtn.classList.remove('on');
+  pz.style.display='none';
   mixStart();               /* song keeps playing, drops to start level */
   var fin=Math.floor(score),ni=-1;
   for(var i=0;i<board.length;i++)if(board[i].you)delete board[i].you;
@@ -850,7 +971,14 @@ function draw(){
     cx.restore();}
   cx.restore();cx.restore();
 }
-function loop(){pollPad();if(st==='play'){step();draw();}requestAnimationFrame(loop);}
+/* paused keeps drawing the frozen frame so the tower stays visible
+   behind the overlay, but never advances the simulation */
+function loop(){
+  pollPad();
+  if(st==='play'){step();draw();}
+  else if(st==='paused'){draw();}
+  requestAnimationFrame(loop);
+}
 
 /* ---- boot ---- */
 makeTrack();
