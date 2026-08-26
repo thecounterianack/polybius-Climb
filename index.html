@@ -24,6 +24,20 @@
  Do NOT set crossOrigin on the audio element - it taints the
  media element source and results in silence.
 
+ ===== WHY THE COIN MUST BE TAPPED OR CLICKED =====
+ Browsers only unlock audio after a real user gesture: touch,
+ click, or keydown. A GAMEPAD BUTTON IS NOT A VALID GESTURE.
+ So pressing X/A on a controller cannot start the song.
+
+ Previously the pad called insertCoin(), which printed
+ "READING COIN..." and then hung forever, because the screen
+ advance lived inside the audio callback that never fired.
+
+ Now the pad does NOT call insertCoin(). Instead it raises a
+ blinking "PRESS THE COIN" prompt for ~10 seconds so controller
+ players know to tap or click the coin. Phone taps, mouse clicks,
+ and Space/Enter all still work directly.
+
  SCREEN FLOW
    1. ATTRACT  - dark cabinet, dead screen, taped coin.
    2. START    - title, high scores, PRESS START.
@@ -31,23 +45,18 @@
    4. OVER     - game over panel, or the Bureau dossier at rank 3+.
 
  PAUSE
-   Tap the II button top-centre, or press P / Escape.
-   Endless climber with no timer, so a plain freeze is fair:
-   nothing is gained or lost by pausing. The song keeps playing
-   at a lower level because it is started once by the coin and
-   is never restarted for the whole session.
+   Tap the II button top-centre, or press P / Escape, or pad START.
+   Endless climber with no timer, so a plain freeze is fair.
    Auto-pauses when the tab is hidden or the window loses focus.
 
  DIFFICULTY
-   Ramp runs to 900 m, not 300 m. Verified against jump physics:
-   jump apex 101 px, airtime 37 frames, reach 94 px calm /
-   74 px worst headwind. Max gap 86 px and max spread 46 px both
-   stay inside those limits, so no platform is unreachable.
+   Ramp runs to 900 m. Verified against jump physics: apex 101 px,
+   airtime 37 frames, reach 94 px calm / 74 px worst headwind.
+   Max gap 86 px and max spread 46 px stay inside those limits.
 
  WIND
-   gust eases toward gustTarget instead of snapping, and its
-   ceiling scales with altitude. Shown in the HUD and drawn in
-   the world; rain drift is tied to it.
+   gust eases toward gustTarget instead of snapping; ceiling
+   scales with altitude. Shown in HUD and drawn in the world.
  ====================================================================
 -->
 <style>
@@ -86,11 +95,13 @@ canvas{display:block;position:absolute;top:0;left:0;touch-action:none;}
 #coinwrap{position:relative;margin:14px auto 0;width:112px;height:112px;}
 #coin{position:absolute;inset:4px;border-radius:50%;background:radial-gradient(circle at 34% 30%,#f2e6b8 0%,#d9c37e 34%,#a88b45 74%,#6f5a26 100%);border:none;color:#3a2f11;font-family:inherit;font-size:10px;font-weight:700;letter-spacing:1.5px;line-height:1.35;box-shadow:0 3px 0 #4a3c18,0 6px 14px rgba(0,0,0,.6),inset 0 0 0 4px rgba(255,255,255,.16),inset 0 0 0 6px rgba(90,70,20,.35);touch-action:manipulation;display:flex;align-items:center;justify-content:center;text-align:center;padding:12px;text-shadow:0 1px 0 rgba(255,255,255,.35);}
 #coin:active{box-shadow:0 1px 0 #4a3c18,0 3px 8px rgba(0,0,0,.6),inset 0 0 0 4px rgba(255,255,255,.16),inset 0 0 0 6px rgba(90,70,20,.35);transform:translateY(2px);}
+#coin.hint{box-shadow:0 3px 0 #4a3c18,0 6px 14px rgba(0,0,0,.6),inset 0 0 0 4px rgba(255,255,255,.16),inset 0 0 0 6px rgba(90,70,20,.35),0 0 0 3px #ffb84a,0 0 22px rgba(255,184,74,.7);}
 .tape{position:absolute;width:60px;height:21px;background:rgba(226,222,198,.30);border-left:1px solid rgba(255,255,255,.22);border-right:1px solid rgba(255,255,255,.22);box-shadow:0 1px 3px rgba(0,0,0,.4);pointer-events:none;}
 #tape1{top:-2px;left:-14px;transform:rotate(-38deg);}
 #tape2{bottom:-2px;right:-14px;transform:rotate(-38deg);}
 #attmsg{color:#39424f;font-size:8.5px;letter-spacing:2px;margin-top:16px;line-height:1.8;}
 #attstat{color:#2f5f45;font-size:7.5px;letter-spacing:2px;margin-top:9px;min-height:10px;}
+#padnote{color:#ffb84a;font-size:9px;letter-spacing:2px;margin-top:10px;min-height:12px;font-weight:700;}
 
 /* ---------- 2. START ---------- */
 #ov{background:rgba(4,5,9,.96);}
@@ -176,7 +187,8 @@ canvas{display:block;position:absolute;top:0;left:0;touch-action:none;}
       <div class="tape" id="tape2"></div>
     </div>
   </div>
-  <div id="attmsg">THE CABINET IS COLD<br>DROP THE COIN TO WAKE IT</div>
+  <div id="attmsg">THE CABINET IS COLD<br>TAP OR CLICK THE COIN TO WAKE IT</div>
+  <div id="padnote">&nbsp;</div>
   <div id="attstat">&nbsp;</div>
 </div>
 
@@ -205,7 +217,7 @@ canvas{display:block;position:absolute;top:0;left:0;touch-action:none;}
   </div>
   <button id="pzresume">RESUME</button>
   <button id="pzquit">END RUN</button>
-  <div id="pzhint">P OR ESC &mdash; START &mdash; PAD START</div>
+  <div id="pzhint">P OR ESC &mdash; SPACE &mdash; PAD START</div>
 </div>
 
 <!-- 4. DOSSIER -->
@@ -296,15 +308,20 @@ var VOL_GAME=0.62;
 var VOL_PAUSE=0.22;
 var HUM_ATTRACT=0.30;
 
+/* how long the pad prompt blinks, in frames (~60/sec) */
+var PAD_PROMPT_FRAMES=600;
+
 /* ============== AUDIO ============== */
 var AC=null,master=null,musicG=null,sfxG=null,noiseBuf=null;
 var trackEl=null,srcNode=null;
 var songStarted=false;
 var attstat=document.getElementById('attstat');
 var nowp=document.getElementById('nowp');
+var padnote=document.getElementById('padnote');
 
 function setAtt(t){ if(attstat) attstat.innerHTML=t; }
 function setNow(t){ if(nowp) nowp.innerHTML=t; }
+function setPadNote(t){ if(padnote) padnote.innerHTML=t; }
 
 function initAudio(){
   if(AC) return true;
@@ -576,6 +593,11 @@ function respawn(){
 }
 
 /* ---------- screen changes ---------- */
+function clearPadPrompt(){
+  padTriedCoin=false;padPromptT=0;
+  setPadNote('&nbsp;');
+  coin.classList.remove('hint');
+}
 function showAttract(){
   st='attract';
   att.style.display='flex';
@@ -587,6 +609,7 @@ function showAttract(){
 }
 function showStartScreen(){
   st='start';
+  clearPadPrompt();
   att.style.display='none';
   dos.style.display='none';
   pz.style.display='none';
@@ -604,9 +627,7 @@ function showStartScreen(){
   mixStart();
 }
 
-/* ---------- PAUSE ----------
-   Endless climber, no timer, so freezing is fair. Inputs are
-   cleared so a held pad direction does not carry into resume. */
+/* ---------- PAUSE ---------- */
 function pauseGame(){
   if(st!=='play') return;
   st='paused';
@@ -651,9 +672,11 @@ document.addEventListener('visibilitychange',function(){
 });
 window.addEventListener('blur',function(){ if(st==='play') pauseGame(); });
 
-/* THE COIN: the one user gesture that unlocks audio and starts the song */
+/* THE COIN: the one user gesture that unlocks audio and starts the song.
+   Reached only by touch, click, or Space/Enter - never by gamepad. */
 function insertCoin(){
   if(st!=='attract') return;
+  clearPadPrompt();
   if(!initAudio()){ showStartScreen(); return; }
   makeTrack();
   setAtt('READING COIN...');
@@ -680,6 +703,7 @@ function startGame(){
   if(st==='play'||st==='paused') return;
   build();
   st='play';
+  clearPadPrompt();
   att.style.display='none';
   ov.style.display='none';
   dos.style.display='none';
@@ -707,6 +731,7 @@ document.addEventListener('keydown',function(e){var k=e.key;
    if(k===' '||k==='Enter'){e.preventDefault();resumeGame();}
    return;
  }
+ /* keydown IS a valid gesture, so Space/Enter can unlock audio */
  if(st==='attract'&&(k===' '||k==='Enter')){e.preventDefault();insertCoin();return;}
  if((st==='start'||st==='dead')&&(k===' '||k==='Enter')){e.preventDefault();startGame();return;}
  if(k==='ArrowLeft'||k==='a'||k==='A')K.l=true;
@@ -726,14 +751,33 @@ function bind(id,f){var el=document.getElementById(id);
  el.addEventListener('mousedown',on);el.addEventListener('mouseup',off);el.addEventListener('mouseleave',off);}
 bind('pl',function(v){K.l=v;});bind('pr',function(v){K.r=v;});bind('pj',function(v){K.j=v;});
 
-/* ===== GAMEPAD SUPPORT ===== */
+/* ===== GAMEPAD SUPPORT =====
+   A gamepad button is NOT a valid user gesture for audio, so on the
+   attract screen the pad raises a prompt instead of calling
+   insertCoin(). Everywhere else the pad behaves normally. */
 var padPrev=false,padStartPrev=false;
+var padTriedCoin=false,padPromptT=0;
 function pollPad(){
   if(!navigator.getGamepads)return;
   var list=navigator.getGamepads(), gp=null;
   for(var i=0;i<list.length;i++){ if(list[i]){gp=list[i];break;} }
   if(!gp)return;
   function btn(n){return !!(gp.buttons&&gp.buttons[n]&&gp.buttons[n].pressed);}
+
+  /* blink the coin prompt while it is live */
+  if(padTriedCoin){
+    if(st!=='attract'){ clearPadPrompt(); }
+    else{
+      padPromptT++;
+      if(padPromptT<PAD_PROMPT_FRAMES){
+        var on=(Math.floor(padPromptT/26)%2===0);
+        setPadNote(on?'&#9660; PRESS THE COIN &#9660;':'&nbsp;');
+        if(on) coin.classList.add('hint'); else coin.classList.remove('hint');
+      } else {
+        clearPadPrompt();
+      }
+    }
+  }
 
   /* START (9) toggles pause during a run */
   var ps=btn(9);
@@ -749,7 +793,10 @@ function pollPad(){
   }
   var conf=btn(0)||btn(1)||btn(9)||btn(8);
   if(conf&&!padPrev){
-    if(st==='attract') insertCoin();
+    if(st==='attract'){
+      /* cannot unlock audio from a pad - point them at the coin */
+      padTriedCoin=true;padPromptT=0;
+    }
     else if(st==='paused') resumeGame();
     else if(st==='start'||st==='dead') startGame();
   }
@@ -983,6 +1030,7 @@ function loop(){
 /* ---- boot ---- */
 makeTrack();
 setAtt('&nbsp;');
+setPadNote('&nbsp;');
 
 /* a stray tap on the attract screen brings up the room hum only */
 function primer(){
