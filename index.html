@@ -19,83 +19,66 @@
 <title>POLYBIUS — Tower D21</title>
 <!--
 ======================================================================
-POLYBIUS — TOWER D21 — BUILD 11  (no falling through ledges)
+POLYBIUS — TOWER D21 — BUILD 12  (scan beams + tougher board)
 The Counterfeit Ian Ackley Experience
 
 DROP THIS FILE NEXT TO YOUR SONG. Any of these names works:
   Song.mp3   song.mp3   SONG.mp3
-Commit it as Song.mp3 so the first attempt succeeds and the sky is
-driven by the analyser instead of the synth scheduler.
 
 DEPLOY NOTE: name this file index.html at the repo root (or /docs) and
 do NOT track the mp3 with Git LFS — GitHub Pages serves the LFS pointer
 file, not the audio, and the game would fall back to synth.
 
-BUILD 11 CHANGE — A LEDGE CAN NO LONGER BE MISSED ON THE WAY DOWN.
-Build 8-10 only counted tunnelling: detectPassthru() incremented the
-PASSTHRU number in the diagnostics overlay and then let the player keep
-falling. Build 11 catches it instead.
+NOTHING IN BUILD 11 WAS REWRITTEN. Every constant, the collision code,
+the tunnel rescue, the audio unlock and the one-tap coin boot are byte
+for byte what they were. Build 12 only ADDS three things.
 
-1. TUNNEL RESCUE.
-   findTunnel() replaces detectPassthru(). When a descending substep
-   takes the feet from above a platform's top to below its bottom in one
-   slice, the player is snapped onto the highest such platform exactly
-   the way a normal landing snaps, with the same vy=0, the same landing
-   damage and the same land sound. PASSTHRU still counts the event so
-   the overlay stays an honest test, and RESCUED counts the correction.
-   Both should read 0 in normal play; if one ever ticks, the run no
-   longer loses a ledge because of it.
-2. TUNNELLING IS NOW MATHEMATICALLY BLOCKED, NOT JUST UNLIKELY.
-   Vertical substeps are capped at PLATFORM_H-2 as well as SUBSTEP_MAX,
-   so a single slice can never exceed a platform's own thickness. With
-   today's constants (SUBSTEP_MAX 3.5, PLATFORM_H 9, TERMINAL 12.5) the
-   substep count is identical to Build 10, so nothing about the physics
-   changes — the cap only protects you if a constant is edited later.
-3. THE LEDGE UNDER YOUR FEET CANNOT BE CULLED.
-   The >110 platform prune could theoretically drop the platform the
-   player was standing on, dropping the player with it. The platform
-   returned by the last landing is now always kept.
+1. SCAN BEAMS.
+   Cyan beams descend the shaft. They are pure hazard: they never touch
+   collision, platforms, cells or the camera, so they cannot break the
+   climb. Each one telegraphs first as a flashing 4 px marker across the
+   top of the screen for BEAM_WARN_FRAMES (42 frames, .7 s) in the exact
+   column it will occupy, then descends.
+     - Nothing spawns until BEAM_START_M (45 m), so the first stretch of
+       every run plays exactly like Build 11.
+     - Intensity rides the same min(peak/900,1) curve the platforms and
+       the wind already use, so it ramps with the run instead of jumping.
+       Spawn gap goes from about 2.5 s down to about 1 s, and fall speed
+       from .95 to 2.3 px per frame.
+     - A hit costs BEAM_DAMAGE (16) HP, drops the multiplier by .5 but
+       never below x1, plays the existing hurt tone and shows a BEAM
+       toast. BEAM_COOL_FRAMES (42) blocks further beam damage, so a
+       long beam drains slowly and a beam alone cannot one-shot a full
+       health bar — you have roughly four seconds inside one to escape.
+     - No beam damage at all while respawnFrames is running, so the
+       75-frame respawn blink is still safe.
+     - Beams are capped at BEAM_MAX (6), culled below the view, and
+       cleared on buildRun and respawn. Widths are 22-34 px against a
+       13 px player, so there is always a way past.
+   To retune, only these need touching: BEAM_START_M, BEAM_MAX,
+   BEAM_DAMAGE, BEAM_COOL_FRAMES, BEAM_WARN_FRAMES, BEAM_W_MIN/MAX and
+   the two lines in updateBeams() that set the gap and the speed.
 
-STILL INTENTIONAL: a ledge is solid from above and open from below.
-Jumping up through a platform is how the tower is climbed, so upward
-collision is deliberately not tested. Say the word if you want ledges
-solid from underneath too — that one really would change the climb.
+2. THE DEFAULT BOARD WAS RAISED FOR A 29,000 CLIMBER.
+   T.S.SPECTRE 34000, ALI3N LEE 22500, K.HALLORAN 14000, up from
+   4200 / 2400 / 1150. The board key moved to pb_board11 so the harder
+   defaults actually install, and any YOU rows saved under pb_board8 or
+   pb_board7 are migrated in and re-sorted, so your own records are not
+   lost. Your best score still lives in pb_best8 and is untouched.
 
-BUILD 10 — ONE TAP STARTS THE CLIMB.
-Tap the coin once and the cabinet boots straight into the run with the
-song already playing. The PRESS START screen is now the between-runs
-screen, reached from PAUSE → END RUN, from ◀ BACK TO THE BOARD, and
-after a run that misses the top three. SOUND / SKY / DIAGNOSTICS live
-there; M, 0 and P still work mid-climb. Blocked-audio warnings are
-mirrored to the toast because the attract status line is off screen once
-the run starts. The AudioContext is still created, resumed and
-track.play()'d synchronously inside the coin tap, which is the only
-thing iOS Safari accepts.
+3. A SAFETY NET THAT STILL CARRIES THE LINK.
+   With a harder board, a short run no longer reaches the top-three
+   dossier, which was the only place the channel link appeared. A run
+   that misses the board now shows a small note under the high scores
+   with the score and a live youtube.com/@x-ackley link. No lecture, no
+   tutorial pitch — it reads as part of the broadcast. The dossier and
+   its top-three trigger are unchanged.
 
-BUILD 9 FIXES, ALL STILL IN PLACE.
-1. Muting with M before the coin could leave the cabinet silent forever;
-   toggleSound() now goes through the idempotent unlockAudio().
-2. gameOver() no longer deletes your earlier YOU rows.
-3. Rank is found by object identity, and the RANK line is omitted from a
-   copied record that did not place.
-4. supportAt() re-checks the feet after the sideways slices, removing a
-   one-frame free jump off ledges. Coyote time is unchanged.
-5. fallStart is clamped to the last grounded height, so a walk-off is no
-   longer under-counted for damage.
-6. insertCoin() uses a real try/finally.
-7. bindButton() adds a de-duplicated touch pointerup, so a tap that
-   drifts still registers on iOS.
-8. The thumb pads own touchKeys{}, so keyboard and gamepad cannot clear
-   them.
-9. The pads also appear under (hover:none) and after any real touch.
-10. Toasts are hidden when play stops.
+The instructions line gained one sentence about the beams. Nothing else
+on any screen was reworded.
 
-The dossier shows the score restated with a live link to
-youtube.com/@x-ackley under the record. Every other word of it, and the
-top-three trigger, are untouched.
-
-Storage keys are still pb_best8 / pb_board8, so your existing best score
-and board survive this upgrade.
+Press 0 or the DIAGNOSTICS button. PASSTHRU and RESCUED must both stay
+at 0; beams shows how many are live.
 ======================================================================
 -->
 <style>
@@ -147,6 +130,10 @@ canvas{position:absolute;inset:0;display:block;touch-action:none}
 #board{width:260px;border-block:1px solid #293141;padding:8px 0;margin:13px 0 3px}
 #boardHead{font-size:8px;color:var(--gold);letter-spacing:3px;margin-bottom:6px}
 .row{display:grid;grid-template-columns:28px 1fr auto;gap:5px;padding:3px 7px;text-align:left;font-size:11px;color:#919caf}.row.you{color:var(--cyan);background:rgba(90,216,255,.1)}
+#netNote{display:none;width:min(300px,92vw);margin:11px 0 0;padding:9px 10px;border:1px solid #2b4356;background:rgba(9,16,24,.9);font-size:9px;letter-spacing:2px;line-height:1.9;color:#6f8697;-webkit-user-select:text;user-select:text}
+#netNote.on{display:block}
+#netNote b{display:block;color:#8ce8ff;font-weight:900;font-size:11px;letter-spacing:1px}
+#netNote a{color:var(--cyan);text-decoration:underline}
 .primary{margin-top:14px;padding:16px 44px;border:0;border-radius:4px;background:var(--cyan);color:#03151d;font-weight:900;letter-spacing:2px;touch-action:manipulation}
 .secondary{margin-top:10px;padding:10px 18px;border:1px solid #334056;border-radius:4px;background:transparent;color:#8ce8ff;font-size:9px;font-weight:800;letter-spacing:2px;touch-action:manipulation}
 #credit{font-size:8px;color:var(--green);letter-spacing:3px;margin-top:11px}
@@ -183,8 +170,9 @@ body.touch #mobilePads{display:block}
 
 <section id="start" class="screen">
   <div id="logo">POLY<b>BIUS</b></div><div id="subtitle">TOWER — 3 LIVES</div><div id="nowPlaying">&nbsp;</div>
-  <div id="instructions">The tower does not end. Climb until your lives run out.<br>Every metre scores. <span class="cyan">Blue cells</span> raise your multiplier.<br><span class="green">Green ledges</span> bank it. Watch the wind.</div>
+  <div id="instructions">The tower does not end. Climb until your lives run out.<br>Every metre scores. <span class="cyan">Blue cells</span> raise your multiplier.<br><span class="green">Green ledges</span> bank it. Watch the wind.<br><span class="cyan">Scan beams</span> fall from above. Do not be standing in one.</div>
   <div id="board"><div id="boardHead">HIGH SCORES</div><div id="rows"></div></div>
+  <div id="netNote"><b id="netScore">SCORE 0</b>THE BROADCAST DID NOT LOG THIS CLIMB. IT IS STILL RUNNING:<br><a id="netLink" href="https://youtube.com/@x-ackley" target="_blank" rel="noopener">youtube.com/@x-ackley</a></div>
   <button id="startButton" class="primary">PRESS START</button>
   <button id="soundButton" class="secondary">SOUND: ON</button>
   <button id="skyButton" class="secondary">SKY: FLASHER</button>
@@ -230,22 +218,30 @@ const SNAP_TOLERANCE=1.5;
 const COYOTE_FRAMES=7;
 const JUMP_BUFFER_FRAMES=7;
 const WIND_START_M=20;
-/* BUILD 11: a single vertical slice can never be thicker than a ledge.
-   With SUBSTEP_MAX 3.5 and PLATFORM_H 9 this equals 3.5, so the substep
-   count is identical to Build 10 — it only guards future edits. */
+/* BUILD 11: a single vertical slice can never be thicker than a ledge. */
 const VSTEP_MAX=Math.min(SUBSTEP_MAX,PLATFORM_H-2);
+
+/* BUILD 12: scan beams. Tune the difficulty here and nowhere else. */
+const BEAM_START_M=45;
+const BEAM_MAX=6;
+const BEAM_W_MIN=22;
+const BEAM_W_MAX=34;
+const BEAM_WARN_FRAMES=42;
+const BEAM_DAMAGE=16;
+const BEAM_COOL_FRAMES=42;
 
 const DAMAGE_LIGHT=3.6;
 const DAMAGE_HEAVY=5.4;
 const DAMAGE_FATAL=7.2;
 
-const DEFAULT_BOARD=[{n:'T.S.SPECTRE',s:4200},{n:'ALI3N LEE',s:2400},{n:'K.HALLORAN',s:1150}];
+/* BUILD 12: raised for a 29,000 climber */
+const DEFAULT_BOARD=[{n:'T.S.SPECTRE',s:34000},{n:'ALI3N LEE',s:22500},{n:'K.HALLORAN',s:14000}];
 
 /* ---------------- DOM ---------------- */
 const $=id=>document.getElementById(id);
 const canvas=$('game');
 const ctx=canvas.getContext('2d',{alpha:false});
-const ui={attract:$('attract'),start:$('start'),pause:$('pause'),dossier:$('dossier'),hud:$('hud'),score:$('score'),best:$('best'),lives:$('lives'),mult:$('mult'),hp:$('hpFill'),wind:$('wind'),coin:$('coin'),status:$('attractStatus'),padPrompt:$('padPrompt'),now:$('nowPlaying'),rows:$('rows'),startButton:$('startButton'),soundButton:$('soundButton'),skyButton:$('skyButton'),diagButton:$('diagButton'),pauseTop:$('pauseTop'),pauseStats:$('pauseStats'),resume:$('resumeButton'),quit:$('quitButton'),toast:$('toast'),blink:$('blink'),diag:$('diag')};
+const ui={attract:$('attract'),start:$('start'),pause:$('pause'),dossier:$('dossier'),hud:$('hud'),score:$('score'),best:$('best'),lives:$('lives'),mult:$('mult'),hp:$('hpFill'),wind:$('wind'),coin:$('coin'),status:$('attractStatus'),padPrompt:$('padPrompt'),now:$('nowPlaying'),rows:$('rows'),netNote:$('netNote'),netScore:$('netScore'),startButton:$('startButton'),soundButton:$('soundButton'),skyButton:$('skyButton'),diagButton:$('diagButton'),pauseTop:$('pauseTop'),pauseStats:$('pauseStats'),resume:$('resumeButton'),quit:$('quitButton'),toast:$('toast'),blink:$('blink'),diag:$('diag')};
 
 let W=320,H=560,DPR=1;
 function resize(){W=innerWidth||320;H=innerHeight||560;DPR=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(W*DPR);canvas.height=Math.round(H*DPR);canvas.style.width=W+'px';canvas.style.height=H+'px';ctx.setTransform(DPR,0,0,DPR,0,0)}
@@ -263,6 +259,7 @@ let wind=0,windTarget=0,windTimer=0;
 let respawnFrames=0,deathLock=false;
 let coyote=0,jumpBuffer=0,jumpHeld=false;
 let platforms=[],cells=[],shapes=[];
+let beams=[],beamTimer=0,beamCool=0;                   /* BUILD 12 */
 let skyMode=0,beatPulse=0,flash=0;
 const keys={left:false,right:false,jump:false};
 const padKeys={left:false,right:false,jump:false};
@@ -273,15 +270,27 @@ let standingOn=null;                                   /* BUILD 11: never cull t
 let board=loadBoard(),lastRecord=null,toastTimer=0;
 
 let diagOn=false;
-const diagStats={landings:0,passthru:0,rescues:0,maxSub:0,maxVy:0,lastLandY:0,deaths:0};
+const diagStats={landings:0,passthru:0,rescues:0,maxSub:0,maxVy:0,lastLandY:0,deaths:0,beamHits:0};
 
 const held=k=>keys[k]||padKeys[k]||touchKeys[k];
 
 /* ---------------- STORAGE ---------------- */
 function loadInt(k,d){try{const n=parseInt(localStorage.getItem(k),10);return Number.isFinite(n)?n:d}catch(e){return d}}
 function save(k,v){try{localStorage.setItem(k,v)}catch(e){}}
-function loadBoard(){try{const a=JSON.parse(localStorage.getItem('pb_board8')||localStorage.getItem('pb_board7'));if(Array.isArray(a)){const c=a.filter(o=>o&&typeof o.n==='string'&&Number.isFinite(o.s)&&o.s>=0).map(o=>({n:o.n.slice(0,14),s:Math.floor(o.s)})).sort((x,y)=>y.s-x.s).slice(0,5);if(c.length)return c}}catch(e){}return DEFAULT_BOARD.map(o=>({...o}))}
-function saveBoard(){save('pb_board8',JSON.stringify(board))}
+function cleanRows(a){return Array.isArray(a)?a.filter(o=>o&&typeof o.n==='string'&&Number.isFinite(o.s)&&o.s>=0).map(o=>({n:o.n.slice(0,14),s:Math.floor(o.s)})):[]}
+/* BUILD 12: pb_board11 holds the harder defaults; YOU rows from the old
+   keys are migrated in so nobody loses a record. */
+function loadBoard(){
+  try{
+    const cur=cleanRows(JSON.parse(localStorage.getItem('pb_board11')||'null'));
+    if(cur.length)return cur.sort((x,y)=>y.s-x.s).slice(0,5);
+    const old=cleanRows(JSON.parse(localStorage.getItem('pb_board8')||localStorage.getItem('pb_board7')||'null'));
+    const mine=old.filter(o=>o.n==='YOU');
+    return DEFAULT_BOARD.map(o=>({...o})).concat(mine).sort((x,y)=>y.s-x.s).slice(0,5);
+  }catch(e){}
+  return DEFAULT_BOARD.map(o=>({...o}));
+}
+function saveBoard(){save('pb_board11',JSON.stringify(board))}
 function escapeHTML(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function drawBoard(mark=-1){ui.rows.innerHTML=board.map((o,i)=>`<div class="row ${i===mark?'you':''}"><span>${i+1}</span><span>${escapeHTML(o.n)}</span><span>${o.s}</span></div>`).join('')}
 
@@ -302,6 +311,7 @@ function updateHUD(){ui.score.textContent=Math.floor(score);ui.best.textContent=
 function updateDiag(){if(!diagOn)return;ui.diag.innerHTML=`vy <b>${player.vy.toFixed(2)}</b>  max <b>${diagStats.maxVy.toFixed(2)}</b>
 grounded <b>${player.grounded?'YES':'no'}</b>  coyote <b>${coyote}</b>
 substeps <b>${diagStats.maxSub}</b>  plats <b>${platforms.length}</b>
+beams <b>${beams.length}</b>  hits <b>${diagStats.beamHits}</b>
 audio <b>${AC?AC.state:'none'}</b>  music <b>${trackPlaying?'FILE':synthOn?'SYNTH':'off'}</b>
 landings <b>${diagStats.landings}</b>  deaths <b>${diagStats.deaths}</b>
 PASSTHRU <i>${diagStats.passthru}</i>  RESCUED <i>${diagStats.rescues}</i>`}
@@ -309,15 +319,11 @@ PASSTHRU <i>${diagStats.passthru}</i>  RESCUED <i>${diagStats.rescues}</i>`}
 /* ---------------- AUDIO ----------------
    Everything that must happen inside the user gesture happens on the
    first lines of unlockAudio(): construct the context, resume it, and
-   call play() on the media element. No awaits before those calls.
-   That is why the song is already up when the climb begins. */
+   call play() on the media element. No awaits before those calls. */
 let AC=null,master=null,sfxGain=null,musicGain=null,analyser=null,freq=null,noiseBuf=null;
 let track=null,sourceNode=null,trackPlaying=false,trackIndex=0,wantMusic=true,soundOn=true;
 let synthOn=false,synthStep=0,synthNext=0,beatQueue=[];
 const SYNTH_BPM=112,SYNTH_STEP=60/SYNTH_BPM/4;
-/* BUILD 10: the attract status line is no longer on screen once the run
-   starts, so a blocked-audio warning is mirrored to the toast. Identical
-   wording, no new strings. */
 function say(msg,el){
   (el||ui.status).textContent=msg;
   if(!el&&!ui.attract.classList.contains('on')&&(msg.indexOf('LOCKED')>=0||msg.indexOf('BLOCKED')>=0))toast(msg,'#ffbf55');
@@ -430,7 +436,9 @@ function tone(f,d=.1,type='square',vol=.16,end=0){
   g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(vol,t+.008);g.gain.exponentialRampToValueAtTime(.0001,t+d);
   o.connect(g).connect(sfxGain);o.start(t);o.stop(t+d+.03);
 }
-const sfx={coin(){tone(1245,.05,'square',.23);setTimeout(()=>tone(988,.06,'square',.2),60);setTimeout(()=>tone(1319,.18,'square',.2),130)},boot(){[196,262,330,392,523].forEach((f,i)=>setTimeout(()=>tone(f,.14,'square',.17),i*70))},jump(){tone(330,.13,'square',.15,620)},land(){tone(120,.055,'triangle',.1,72)},hurt(){tone(220,.2,'sawtooth',.23,90)},cell(){tone(720,.08,'square',.18);setTimeout(()=>tone(1080,.1,'square',.15),65)},bank(){[523,659,784,1047].forEach((f,i)=>setTimeout(()=>tone(f,.12,'triangle',.16),i*55))},life(){tone(440,.14,'square',.2,220)},over(){[392,330,262,196].forEach((f,i)=>setTimeout(()=>tone(f,.24,'triangle',.2),i*150))},pause(){tone(392,.1,'square',.14,300)},resume(){tone(523,.1,'square',.15,700)}};
+const sfx={coin(){tone(1245,.05,'square',.23);setTimeout(()=>tone(988,.06,'square',.2),60);setTimeout(()=>tone(1319,.18,'square',.2),130)},boot(){[196,262,330,392,523].forEach((f,i)=>setTimeout(()=>tone(f,.14,'square',.17),i*70))},jump(){tone(330,.13,'square',.15,620)},land(){tone(120,.055,'triangle',.1,72)},hurt(){tone(220,.2,'sawtooth',.23,90)},cell(){tone(720,.08,'square',.18);setTimeout(()=>tone(1080,.1,'square',.15),65)},bank(){[523,659,784,1047].forEach((f,i)=>setTimeout(()=>tone(f,.12,'triangle',.16),i*55))},life(){tone(440,.14,'square',.2,220)},over(){[392,330,262,196].forEach((f,i)=>setTimeout(()=>tone(f,.24,'triangle',.2),i*150))},pause(){tone(392,.1,'square',.14,300)},resume(){tone(523,.1,'square',.15,700)},
+/* BUILD 12: a short descending sweep when a beam is telegraphed */
+beam(){tone(1480,.09,'sawtooth',.10,520)}};
 function setMix(v){
   if(master&&AC)master.gain.setTargetAtTime(soundOn?v:0,AC.currentTime,.05);
   if(track&&!sourceNode){try{track.volume=Math.max(0,Math.min(1,soundOn?v*1.6:0))}catch(e){}}
@@ -480,13 +488,14 @@ function bootIntoRun(){
   ui.blink.textContent='PRESS START';
   ui.skyButton.textContent=['SKY: FLASHER','SKY: CALM','SKY: PLAIN'][skyMode];
   ui.soundButton.textContent='SOUND: '+(soundOn?'ON':'OFF');
+  ui.netNote.classList.remove('on');
   drawBoard();
   if(ui.now.textContent.trim()==='')say(trackPlaying?'♪ '+TRACK_TITLE:'♪ SYNTH RHYTHM ACTIVE',ui.now);
   releaseInputs();
   setState('start');
   startGame();
 }
-function showStartScreen(){releaseInputs();setState('start');showScreen('start');setMix(.42);drawBoard();ui.startButton.textContent='PRESS START';ui.blink.textContent='PRESS START';ui.skyButton.textContent=['SKY: FLASHER','SKY: CALM','SKY: PLAIN'][skyMode];ui.soundButton.textContent='SOUND: '+(soundOn?'ON':'OFF');if(ui.now.textContent.trim()==='')say(trackPlaying?'♪ '+TRACK_TITLE:'♪ SYNTH RHYTHM ACTIVE',ui.now)}
+function showStartScreen(){releaseInputs();setState('start');showScreen('start');setMix(.42);drawBoard();ui.netNote.classList.remove('on');ui.startButton.textContent='PRESS START';ui.blink.textContent='PRESS START';ui.skyButton.textContent=['SKY: FLASHER','SKY: CALM','SKY: PLAIN'][skyMode];ui.soundButton.textContent='SOUND: '+(soundOn?'ON':'OFF');if(ui.now.textContent.trim()==='')say(trackPlaying?'♪ '+TRACK_TITLE:'♪ SYNTH RHYTHM ACTIVE',ui.now)}
 
 /* ---------------- LEVEL ---------------- */
 function addPlatform(){
@@ -507,13 +516,55 @@ function buildRun(){
   for(let i=0;i<28;i++)addPlatform();
   Object.assign(player,{x:W/2-PLAYER_W/2,y:-PLAYER_H-1,vx:0,vy:0,grounded:true,fallStart:-PLAYER_H,falling:false,hp:100,face:1});
   groundedY=player.y;standingOn=platforms[0];
+  beams=[];beamTimer=120;beamCool=0;
   score=0;multiplier=1;bestMultiplier=1;peak=0;camera=-H+90;
   wind=0;windTarget=0;windTimer=200;
   lives=LIVES_PER_CREDIT;respawnFrames=0;deathLock=false;coyote=0;jumpBuffer=0;jumpHeld=false;
-  diagStats.landings=0;diagStats.passthru=0;diagStats.rescues=0;diagStats.maxSub=0;diagStats.maxVy=0;diagStats.deaths=0;
+  diagStats.landings=0;diagStats.passthru=0;diagStats.rescues=0;diagStats.maxSub=0;diagStats.maxVy=0;diagStats.deaths=0;diagStats.beamHits=0;
   makeShapes();updateHUD();
 }
 function startGame(){if(state!=='start'&&state!=='dead')return;nudgeAudio();buildRun();showScreen('none');setState('play');setMix(.62);accumulator=0;lastTime=performance.now()}
+
+/* ---------------- SCAN BEAMS (BUILD 12) ----------------
+   Hazard only. Beams are never consulted by collision, so they cannot
+   affect landings, the tunnel rescue or the camera. */
+function spawnBeam(){
+  if(beams.length>=BEAM_MAX)return;
+  const lv=Math.min(peak/900,1);
+  const w=BEAM_W_MIN+Math.random()*(BEAM_W_MAX-BEAM_W_MIN);
+  const x=Math.max(2,Math.min(W-w-2,4+Math.random()*Math.max(1,W-w-8)));
+  beams.push({x,w,y:camera-150-Math.random()*90,len:150+Math.random()*140+lv*120,vy:.95+lv*1.35,warn:BEAM_WARN_FRAMES});
+  sfx.beam();
+}
+function updateBeams(){
+  if(beamCool>0)beamCool--;
+  if(peak<BEAM_START_M){if(beams.length)beams.length=0;return}
+  const lv=Math.min(peak/900,1);
+  if(--beamTimer<=0){beamTimer=Math.round(150-lv*88+Math.random()*70);spawnBeam()}
+  const bottom=camera+H+280;
+  for(let i=beams.length-1;i>=0;i--){
+    const b=beams[i];
+    if(b.warn>0){b.warn--;continue}
+    b.y+=b.vy;
+    if(b.y>bottom)beams.splice(i,1);
+  }
+}
+function beamContact(){
+  if(beamCool>0||respawnFrames>0||state!=='play')return;
+  const px=player.x,py=player.y;
+  for(const b of beams){
+    if(b.warn>0)continue;
+    if(px+PLAYER_W<=b.x||px>=b.x+b.w)continue;
+    if(py+PLAYER_H<=b.y||py>=b.y+b.len)continue;
+    player.hp-=BEAM_DAMAGE;
+    beamCool=BEAM_COOL_FRAMES;
+    diagStats.beamHits++;
+    multiplier=Math.max(1,multiplier-.5);
+    sfx.hurt();toast('BEAM','#8ce8ff');
+    if(player.hp<=0)loseLife();
+    return;
+  }
+}
 
 /* ---------------- COLLISION ---------------- */
 function findLanding(prevX,nextX,prevFoot,nextFoot){
@@ -528,8 +579,7 @@ function findLanding(prevX,nextX,prevFoot,nextFoot){
   }
   return best;
 }
-/* BUILD 11: the old detectPassthru() only counted. This returns the
-   platform that was skipped so the caller can land on it instead. */
+/* BUILD 11: returns the platform that was skipped so we can land on it */
 function findTunnel(prevX,nextX,prevFoot,nextFoot){
   if(nextFoot<=prevFoot)return null;
   const left=Math.min(prevX,nextX);
@@ -551,8 +601,6 @@ function supportAt(x,footY){
 }
 function moveAndCollide(){
   const totalX=player.vx,totalY=player.vy;
-  /* BUILD 11: horizontal and vertical travel are capped separately, so a
-     slice can never be thicker than a ledge */
   const steps=Math.max(1,Math.ceil(Math.abs(totalX)/SUBSTEP_MAX),Math.ceil(Math.abs(totalY)/VSTEP_MAX));
   if(steps>diagStats.maxSub)diagStats.maxSub=steps;
   const stepX=totalX/steps,stepY=totalY/steps;
@@ -566,7 +614,6 @@ function moveAndCollide(){
     if(player.vy>=0){
       const hit=findLanding(prevX,player.x,prevFoot,nextFoot);
       if(hit){player.y=hit.y-PLAYER_H;player.vy=0;landed=hit;diagStats.landings++;diagStats.lastLandY=hit.y;continue}
-      /* BUILD 11: a ledge was jumped over in one slice — put the player on it */
       const tunnel=findTunnel(prevX,player.x,prevFoot,nextFoot);
       if(tunnel){
         diagStats.passthru++;diagStats.rescues++;
@@ -576,7 +623,6 @@ function moveAndCollide(){
       }
     }
   }
-  /* FIX 4: the sideways slices may have carried the feet past the edge */
   if(landed&&!supportAt(player.x,player.y+PLAYER_H))landed=null;
   return landed;
 }
@@ -608,6 +654,7 @@ function respawn(){
   }
   Object.assign(player,{x:choice.x+choice.w/2-PLAYER_W/2,y:choice.y-PLAYER_H,vx:0,vy:0,grounded:true,falling:false,fallStart:choice.y-PLAYER_H,hp:100});
   groundedY=player.y;standingOn=choice;
+  beams=[];beamTimer=120;beamCool=0;
   multiplier=1;respawnFrames=75;coyote=0;jumpBuffer=0;jumpHeld=false;deathLock=false;
   sfx.life();toast(lives+' LIVES LEFT','#ff7d87');
 }
@@ -645,7 +692,6 @@ function simulate(){
 
   player.vy=Math.min(player.vy+GRAVITY,TERMINAL);
   if(player.vy>diagStats.maxVy)diagStats.maxVy=player.vy;
-  /* FIX 5: a walk-off starts the fall at the ledge, not one frame below it */
   if(!player.grounded&&player.vy>0&&!player.falling){player.falling=true;player.fallStart=Math.min(player.y,groundedY)}
 
   const wasGrounded=player.grounded;
@@ -662,6 +708,11 @@ function simulate(){
 
   if(player.y>-peak*PPM+H*1.3){player.hp=0;loseLife();if(state!=='play')return}
 
+  /* BUILD 12: beams move and are tested after the player has settled */
+  updateBeams();
+  beamContact();
+  if(state!=='play')return;
+
   for(const c of cells){
     if(!c.got&&Math.abs(player.x+PLAYER_W/2-c.x)<19&&Math.abs(player.y+PLAYER_H/2-c.y)<21){
       c.got=true;multiplier+=.5;bestMultiplier=Math.max(bestMultiplier,multiplier);
@@ -673,7 +724,6 @@ function simulate(){
   while(topY-camera>-H*1.7&&guard++<8)addPlatform();
 
   const respawnLine=-peak*PPM+120,keepBand=H*1.4;
-  /* BUILD 11: p===standingOn — the ledge under the player is never culled */
   if(platforms.length>110)platforms=platforms.filter(p=>p.type==='ground'||p===standingOn||Math.abs(p.y-respawnLine)<keepBand||p.y-camera<H+500);
   if(cells.length>80)cells=cells.filter(c=>!c.got&&(Math.abs(c.y-respawnLine)<keepBand||c.y-camera<H+500));
 
@@ -693,8 +743,6 @@ function gameOver(){
   setState('dead');releaseInputs();setMix(.42);sfx.over();
   const final=Math.floor(score),oldBest=bestScore;
   if(final>bestScore){bestScore=final;save('pb_best8',String(bestScore))}
-  /* FIX 2: earlier YOU rows are kept — a small run no longer deletes a big one.
-     FIX 3: rank is found by identity, so a duplicate score cannot fake it. */
   const entry={n:'YOU',s:final};
   board.push(entry);
   board.sort((a,b)=>b.s-a.s);
@@ -703,7 +751,16 @@ function gameOver(){
   saveBoard();
   lastRecord={score:final,alt:Math.floor(peak),mult:bestMultiplier.toFixed(1),rank:rank,of:board.length,newBest:final>oldBest};
   if(rank>0&&rank<=3)showDossier(lastRecord);
-  else{showStartScreen();setState('dead');ui.startButton.textContent='PLAY AGAIN';ui.blink.textContent='THE CABINET REMEMBERS';drawBoard(rank-1)}
+  else{
+    showStartScreen();setState('dead');
+    ui.startButton.textContent='PLAY AGAIN';ui.blink.textContent='THE CABINET REMEMBERS';
+    drawBoard(rank-1);
+    /* BUILD 12: safety net — the link still reaches a climber who missed */
+    ui.netScore.textContent='SCORE '+final+(final>oldBest?' — NEW PERSONAL BEST':'');
+    $('netLink').href=COMPLETE_FILE_URL;
+    $('netLink').textContent=COMPLETE_FILE_URL.replace(/^https?:\/\//,'');
+    ui.netNote.classList.add('on');
+  }
 }
 function showDossier(r){
   setState('dead');showScreen('dossier');
@@ -713,7 +770,6 @@ function showDossier(r){
   $('finalRank').textContent=(r.rank>0?r.rank:'—')+' / '+r.of;
   $('rankText').textContent='RANK '+(r.rank>0?r.rank:'—')+' OF '+r.of;
   $('caseNo').textContent=caseNumber(r.score,r.rank||r.of);
-  /* score restated with the channel link, right under the record */
   $('linkScore').textContent='SCORE '+r.score+(r.newBest?' — NEW PERSONAL BEST':'');
   const link=$('fileLink');
   link.href=COMPLETE_FILE_URL;
@@ -723,7 +779,7 @@ function caseNumber(s,r){const seed=s+4139;return String(21+seed%4)+'-'+String.f
 function copyRecord(){
   if(!lastRecord)return;
   const r=lastRecord;
-  const rankLine=r.rank>0?`RANK ${r.rank} OF ${r.of} ON THIS CABINET\n`:'';   /* FIX 3 */
+  const rankLine=r.rank>0?`RANK ${r.rank} OF ${r.of} ON THIS CABINET\n`:'';
   const text=`POLYBIUS — TOWER D21\nSCORE ${r.score} | ALTITUDE ${r.alt} M | BEST MULT x${r.mult}\n${rankLine}${r.newBest?'*** NEW PERSONAL BEST ***\n':''}Beat it: ${COMPLETE_FILE_URL}`;
   const b=$('copyRecord');
   const done=ok=>{b.textContent=ok?'✓ RECORD COPIED':'COPY BLOCKED';setTimeout(()=>b.textContent='COPY MY RECORD',1500)};
@@ -789,6 +845,28 @@ function drawSky(){
   scrim.addColorStop(.86,'rgba(5,7,12,.9)');scrim.addColorStop(1,'rgba(5,7,12,0)');
   ctx.fillStyle=scrim;ctx.fillRect(x,0,width,H);
 }
+/* BUILD 12: beams inside the world transform, warnings in screen space */
+function drawBeams(){
+  for(const b of beams){
+    if(b.warn>0)continue;
+    if(b.y+b.len-camera<-40||b.y-camera>H+40)continue;
+    const g=ctx.createLinearGradient(0,b.y,0,b.y+b.len);
+    g.addColorStop(0,'rgba(90,216,255,0)');
+    g.addColorStop(.14,'rgba(90,216,255,.30)');
+    g.addColorStop(.86,'rgba(90,216,255,.30)');
+    g.addColorStop(1,'rgba(90,216,255,0)');
+    ctx.fillStyle=g;ctx.fillRect(b.x,b.y,b.w,b.len);
+    ctx.fillStyle='rgba(206,244,255,.5)';ctx.fillRect(b.x+b.w*.42,b.y,b.w*.16,b.len);
+    ctx.fillStyle='rgba(230,250,255,.75)';ctx.fillRect(b.x,b.y+b.len-3,b.w,3);
+  }
+}
+function drawBeamWarnings(){
+  for(const b of beams){
+    if(b.warn<=0)continue;
+    ctx.fillStyle=Math.floor(b.warn/4)%2?'rgba(90,216,255,.8)':'rgba(90,216,255,.22)';
+    ctx.fillRect(b.x,0,b.w,4);
+  }
+}
 function draw(){
   drawSky();
   ctx.strokeStyle='rgba(190,220,245,.18)';ctx.lineWidth=1;
@@ -810,6 +888,7 @@ function draw(){
     ctx.fillStyle=p.type==='bank'?'#8dffc6':'#9baec8';
     ctx.fillRect(p.x,p.y,p.w,3);
   }
+  drawBeams();
   for(const c of cells){
     if(c.got||c.y-camera<-50||c.y-camera>H+50)continue;
     c.phase+=.08;
@@ -828,6 +907,7 @@ function draw(){
     ctx.restore();
   }
   ctx.restore();
+  drawBeamWarnings();
   updateDiag();
 }
 
@@ -951,6 +1031,8 @@ ui.best.textContent='BEST '+bestScore;
 drawBoard();
 $('fileLink').href=COMPLETE_FILE_URL;
 $('fileLink').textContent=COMPLETE_FILE_URL.replace(/^https?:\/\//,'');
+$('netLink').href=COMPLETE_FILE_URL;
+$('netLink').textContent=COMPLETE_FILE_URL.replace(/^https?:\/\//,'');
 showScreen('attract');
 setState('attract');
 requestAnimationFrame(loop);
