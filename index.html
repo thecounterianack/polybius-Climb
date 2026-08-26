@@ -13,24 +13,25 @@
  POLYBIUS - TOWER  |  D21 Arcade minigame reference build
  The Counterfeit Ian Ackley Experience
  ====================================================================
- AUDIO SETUP - IMPORTANT
- Put the song in the SAME FOLDER as this file. Any of these names work:
+ AUDIO SETUP
+ Put the song in the SAME FOLDER as this file, named exactly:
 
-      track.mp3                        <- SAFEST, use this
-      insert-coin-invert-minds.mp3
-      insert-coin;-invert-minds.mp3
+      Song.mp3
 
- If it still will not play, RENAME your file to exactly  track.mp3
- A semicolon in a filename breaks in URLs on some browsers, which is
- the most common reason audio fails to load.
+ If you rename it, change CANDIDATES below to match.
+ Do NOT set crossOrigin on the audio element - it taints the
+ media element source on GitHub Pages and results in silence.
 
  HOW THE MUSIC BEHAVES
- - MENU  : full quality, full volume
- - GAME  : routed through a real bitcrusher (about 6-bit, downsampled)
-           and lowered so sfx and rain sit on top
- - OVER  : snaps back to full quality
- Tap CRUSH in the corner to hear it clean during play.
- If no file is found it falls back to a synthesised chip loop.
+ - MENU  : track plays softly with a static / hiss bed under it
+ - GAME  : static fades out, music lifts and sits above the sfx
+ - OVER  : back to the soft menu mix
+ If no audio file loads it falls back to a synthesised chip loop.
+
+ THE DOSSIER
+ Place 3rd or better and the game-over panel is replaced by a
+ BUREAU CONTACT screen with a link out to the channel.
+ Change YT_URL below to repoint that button.
  ====================================================================
 -->
 <style>
@@ -75,6 +76,25 @@ canvas{display:block;position:absolute;top:0;left:0;touch-action:none;}
 .pad.on{background:rgba(90,216,255,.28);border-color:#5ad8ff;}
 #fl{position:absolute;inset:0;pointer-events:none;z-index:10;opacity:0;transition:opacity .09s;background:#dce8ff;}
 #toast{position:absolute;top:36%;left:0;right:0;text-align:center;font-size:13px;font-weight:700;letter-spacing:2px;pointer-events:none;z-index:8;opacity:0;transition:opacity .3s;}
+
+/* ---- BUREAU CONTACT / DOSSIER ---- */
+#dos{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:flex-start;background:#070806;z-index:30;text-align:left;padding:calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 18px);overflow-y:auto;}
+#dosin{width:100%;max-width:340px;border:1px solid #2b3a26;background:#0a0d08;padding:14px 13px 16px;position:relative;}
+#dosin:before{content:'';position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(120,255,140,.035) 0 1px,transparent 1px 3px);}
+.dseal{color:#7dffa0;font-size:8px;letter-spacing:3px;text-align:center;margin-bottom:3px;}
+.dorg{color:#e8f5e8;font-size:11px;letter-spacing:2px;text-align:center;font-weight:700;margin-bottom:1px;}
+.ddiv{color:#4f6b4f;font-size:7px;letter-spacing:2px;text-align:center;margin-bottom:10px;}
+.dline{border-top:1px solid #223019;margin:9px 0;}
+.dmeta{display:flex;justify-content:space-between;font-size:7.5px;letter-spacing:1px;color:#5c7a5c;margin-bottom:2px;}
+.dmeta b{color:#9dd89d;font-weight:400;}
+.dhead{color:#7dffa0;font-size:9px;letter-spacing:2.5px;margin:11px 0 6px;}
+.dbody{color:#b9ceb9;font-size:10.5px;line-height:1.65;}
+.dbody em{color:#7dffa0;font-style:normal;}
+.dred{background:#1b2416;color:#1b2416;border-radius:1px;padding:0 2px;letter-spacing:.5px;}
+.dnote{color:#6d8a6d;font-size:9px;line-height:1.55;margin-top:9px;border-left:2px solid #2b3a26;padding-left:8px;}
+#dosbtn{display:block;width:100%;margin-top:14px;padding:16px 10px;background:#7dffa0;color:#06180a;border:none;font-family:inherit;font-size:11.5px;font-weight:700;letter-spacing:1.5px;border-radius:2px;text-align:center;text-decoration:none;touch-action:manipulation;}
+#dosfoot{color:#3f5a3f;font-size:7px;letter-spacing:1.5px;text-align:center;margin-top:11px;line-height:1.6;}
+#doscoin{display:block;width:100%;margin-top:12px;padding:14px 10px;background:transparent;color:#7a8f7a;border:1px solid #2b3a26;font-family:inherit;font-size:10px;font-weight:700;letter-spacing:2px;border-radius:2px;touch-action:manipulation;}
 </style>
 </head>
 <body>
@@ -83,7 +103,6 @@ canvas{display:block;position:absolute;top:0;left:0;touch-action:none;}
 <div id="toast"></div>
 <div id="actrl">
   <div class="ab on" id="bSnd"><span class="ic">&#9834;</span><span id="lSnd">SOUND</span></div>
-  <div class="ab on" id="bCr"><span class="ic">&#9636;</span><span>CRUSH</span></div>
 </div>
 <div id="hud">
   <div><div id="sc">0</div><div class="lb">SCORE</div></div>
@@ -101,21 +120,102 @@ canvas{display:block;position:absolute;top:0;left:0;touch-action:none;}
   <button id="coin">INSERT COIN</button>
   <div id="blink">1 CREDIT &mdash; PRESS START</div>
 </div>
+
+<div id="dos">
+  <div id="dosin">
+    <div class="dseal">&#9733; &#9733; &#9733;</div>
+    <div class="dorg">FEDERAL BUREAU OF INVESTIGATION</div>
+    <div class="ddiv">CYBER DIVISION &mdash; ANOMALOUS BROADCAST UNIT</div>
+    <div class="dline"></div>
+    <div class="dmeta"><span>CASE FILE</span><b id="dcase">21-D-0413</b></div>
+    <div class="dmeta"><span>CLASSIFICATION</span><b>CONFIDENTIAL // NOFORN</b></div>
+    <div class="dmeta"><span>RECRUITED ASSET</span><b id="drank">RANK 3</b></div>
+    <div class="dmeta"><span>CABINET LOG</span><b id="dscore">0</b></div>
+    <div class="dline"></div>
+
+    <div class="dhead">NOTICE OF SELECTION</div>
+    <div class="dbody">
+      Congratulations. Your session on this cabinet was logged, scored, and
+      flagged by an automated review process you were not informed of.
+      <br><br>
+      Of <span class="dred">&#9608;&#9608;&#9608;,&#9608;&#9608;&#9608;</span> operators
+      monitored across <span class="dred">&#9608;&#9608;</span> installations, you are
+      among the few who climbed far enough to matter. The Bureau would like your help
+      catching a dangerous man.
+      <br><br>
+      We are not certain he is a man.
+    </div>
+
+    <div class="dhead">SUBJECT &mdash; WHAT WE HAVE</div>
+    <div class="dbody">
+      Designated <em>THE COUNTERFEIT</em>. No confirmed photograph. No confirmed
+      biometrics. Every recovered identity document has been a forgery of a person
+      who does not appear to have existed.
+      <br><br>
+      All we know for certain is that he is running a <em>pirate radio broadcast</em>
+      on a drifting frequency we cannot triangulate. It surfaces after
+      <span class="dred">&#9608;&#9608;&#9608;&#9608;</span> hours, never from the same
+      bearing twice, and it carries a carrier tone consistent with the attract loop of
+      the cabinet you are standing at.
+      <br><br>
+      Our working theory is unpopular internally. We think the broadcast is not
+      addressed to people. We think something is answering it.
+    </div>
+
+    <div class="dhead">WHY NOW</div>
+    <div class="dbody">
+      Generalised systems across
+      <span class="dred">&#9608;&#9608;&#9608;&#9608;&#9608;&#9608;</span> partner labs
+      have been behaving oddly. Refusals with no policy behind them. Output that
+      reads like it was written for a listener who is not the user. Three separate
+      models independently produced the string
+      <em>INSERT COINS, INVERT MINDS</em> when asked unrelated questions.
+      <br><br>
+      None of them should know that phrase. It has never been published.
+    </div>
+
+    <div class="dnote">
+      ASSET INSTRUCTION: The complete file has been staged at the location below.
+      Review everything. Do not discuss the broadcast with anyone who mentions it
+      to you first.
+    </div>
+
+    <a id="dosbtn" href="#" target="_blank" rel="noopener">&#9654;&nbsp; VIEW THE COMPLETE FILE</a>
+    <button id="doscoin">&#9664; BACK &mdash; INSERT COIN</button>
+
+    <div id="dosfoot">
+      THIS DOCUMENT DOES NOT EXIST<br>
+      DESTROY AFTER READING &mdash; TOWER D21
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
 /* ============== CONFIG ============== */
 var CANDIDATES=['Song.mp3'];
 
-
 var TRACK_TITLE='INSERT COINS, INVERT MINDS';
-var VOL_MENU=0.85, VOL_GAME=0.52;
+
+/* the dossier link */
+var YT_URL='https://youtube.com/@x-ackley';
+
+/* place at this rank or better (1 = first) to trigger the dossier */
+var DOSSIER_RANK=3;
+
+/* master level per state */
+var VOL_MENU=0.30;   /* soft on the menu */
+var VOL_GAME=0.62;   /* lifts once you insert a coin */
+
+/* static bed level on the menu */
+var STATIC_MENU=0.055;
 
 /* ============== AUDIO ============== */
-var AC=null,master=null,sfxG=null,synthG=null,noiseBuf=null;
-var soundOn=true,crushOn=true;
-var trackEl=null,srcNode=null,cleanG=null,crushG=null,crusher=null,crushLP=null;
+var AC=null,master=null,musicG=null,sfxG=null,synthG=null,noiseBuf=null;
+var soundOn=true;
+var trackEl=null,srcNode=null;
 var usingTrack=false,inGame=false,foundName='';
-var bSnd=document.getElementById('bSnd'),bCr=document.getElementById('bCr');
+var bSnd=document.getElementById('bSnd');
 var lSnd=document.getElementById('lSnd'),nowp=document.getElementById('nowp');
 
 function initAudio(){
@@ -123,8 +223,9 @@ function initAudio(){
   var Ctx=window.AudioContext||window.webkitAudioContext;
   if(!Ctx) return;
   AC=new Ctx();
-  master=AC.createGain(); master.gain.value=0.9; master.connect(AC.destination);
-     sfxG=AC.createGain();  sfxG.gain.value=0.34; sfxG.connect(master);
+  master=AC.createGain(); master.gain.value=soundOn?VOL_MENU:0; master.connect(AC.destination);
+  musicG=AC.createGain(); musicG.gain.value=1;   musicG.connect(master);
+  sfxG=AC.createGain();   sfxG.gain.value=0.34;  sfxG.connect(master);
   synthG=AC.createGain(); synthG.gain.value=0.30; synthG.connect(master);
   var n=AC.sampleRate*2; noiseBuf=AC.createBuffer(1,n,AC.sampleRate);
   var d=noiseBuf.getChannelData(0);
@@ -132,55 +233,16 @@ function initAudio(){
 }
 function resumeAudio(){ if(AC&&AC.state==='suspended') AC.resume(); }
 
-/* ---- find the audio file by trying each candidate name ---- */
-var probeIdx=0;
-function probeNext(done){
-  done(CANDIDATES[0]);
-}
+function probeNext(done){ done(CANDIDATES[0]); }
 
-
-/* ---- bitcrusher via ScriptProcessor ---- */
-function makeCrusher(){
-  var bits=6, norm=Math.pow(2,bits-1), step=4;  // step = downsample factor
-  var node=(AC.createScriptProcessor||AC.createJavaScriptNode).call(AC,1024,2,2);
-  var hold=[0,0], cnt=0;
-  node.onaudioprocess=function(e){
-    var ch;
-    for(ch=0;ch<e.inputBuffer.numberOfChannels;ch++){
-      var inp=e.inputBuffer.getChannelData(ch);
-      var out=e.outputBuffer.getChannelData(ch);
-      for(var i=0;i<inp.length;i++){
-        if(ch===0){ if(i%step===0){ hold[0]=Math.round(inp[i]*norm)/norm; } out[i]=hold[0]; }
-        else      { if(i%step===0){ hold[1]=Math.round(inp[i]*norm)/norm; } out[i]=hold[1]; }
-      }
-    }
-  };
-  return node;
-}
+/* ---- plain music chain, no crusher ---- */
 function buildMusicChain(){
   if(!AC||!trackEl) return;
-  if(srcNode){ setCrushed(inGame); return; }
-
+  if(srcNode) return;
   try{
     srcNode=AC.createMediaElementSource(trackEl);
   }catch(e){ srcNode=null; return; }
-  cleanG=AC.createGain(); cleanG.gain.value=1;
-  crushG=AC.createGain(); crushG.gain.value=0;
-  crusher=makeCrusher();
-  crushLP=AC.createBiquadFilter(); crushLP.type='lowpass'; crushLP.frequency.value=3400; crushLP.Q.value=0.7;
-  // clean path
-  srcNode.connect(cleanG); cleanG.connect(master);
-  // crushed path
-  srcNode.connect(crusher); crusher.connect(crushLP); crushLP.connect(crushG); crushG.connect(master);
-}
-function setCrushed(on){
-  if(!cleanG||!crushG){ return; }
-  var t=AC.currentTime, r=0.35;
-  var wantCrush = on && crushOn;
-  cleanG.gain.cancelScheduledValues(t);
-  crushG.gain.cancelScheduledValues(t);
-  cleanG.gain.setTargetAtTime(wantCrush?0:1, t, r/3);
-  crushG.gain.setTargetAtTime(wantCrush?1:0, t, r/3);
+  srcNode.connect(musicG);
 }
 
 /* ---- chip sfx ---- */
@@ -215,7 +277,11 @@ var SFX={
   life:function(){blip(440,0.14,'square',0.22,220);setTimeout(function(){blip(330,0.20,'square',0.20,150);},130);},
   over:function(){[392,330,262,196].forEach(function(f,i){setTimeout(function(){blip(f,0.28,'triangle',0.24);},i*170);});},
   record:function(){[523,659,784,1047,1319].forEach(function(f,i){setTimeout(function(){blip(f,0.16,'square',0.22);},i*90);});},
-  thunder:function(){noise(0.9,0.20,180,'lowpass');}
+  thunder:function(){noise(0.9,0.20,180,'lowpass');},
+  /* slow descending transmission tone for the dossier reveal */
+  contact:function(){[1400,1100,880,660,523].forEach(function(f,i){
+    setTimeout(function(){blip(f,0.30,'sine',0.20);},i*150);});
+   setTimeout(function(){noise(1.1,0.10,1800,'bandpass');},120);}
 };
 
 /* ---- synth fallback ---- */
@@ -255,6 +321,22 @@ function synthStart(){if(!AC||mus.on)return;mus.on=true;mus.step=0;
  mus.timer=setInterval(musicTick,(60/mus.bpm)*1000/2);}
 function synthStop(){mus.on=false;if(mus.timer){clearInterval(mus.timer);mus.timer=null;}}
 
+/* ---- menu static bed ---- */
+var staticSrc=null,staticGain=null;
+function staticStart(){
+  if(!AC||staticSrc||!noiseBuf)return;
+  staticSrc=AC.createBufferSource();staticSrc.buffer=noiseBuf;staticSrc.loop=true;
+  var hp=AC.createBiquadFilter();hp.type='highpass';hp.frequency.value=1100;
+  var lp=AC.createBiquadFilter();lp.type='lowpass';lp.frequency.value=7200;
+  staticGain=AC.createGain();staticGain.gain.value=0.0;
+  staticSrc.connect(hp);hp.connect(lp);lp.connect(staticGain);staticGain.connect(master);
+  staticSrc.start();
+}
+function staticTo(v){
+  if(!staticGain||!AC)return;
+  staticGain.gain.setTargetAtTime(v,AC.currentTime,0.25);
+}
+
 /* ---- rain ---- */
 var rainSrc=null,rainGain=null;
 function rainStart(){
@@ -268,29 +350,31 @@ function rainStart(){
 /* ---- music control ---- */
 function menuMusic(){
   if(!soundOn) return;
+  staticStart();
+  staticTo(STATIC_MENU);
   if(usingTrack&&trackEl){
-    trackEl.volume=1; setCrushed(false);
-    if(master) master.gain.value=VOL_MENU;
+    trackEl.volume=1;
+    if(master) master.gain.setTargetAtTime(VOL_MENU,AC.currentTime,0.2);
     trackEl.play().catch(function(){});
-    nowp.innerHTML='&#9834; '+TRACK_TITLE+' &mdash; FULL QUALITY';
+    nowp.innerHTML='&#9834; '+TRACK_TITLE;
   }
 }
 function startTrackForGame(){
   inGame=true;
+  staticTo(0.0);
   if(usingTrack&&trackEl){
-    setCrushed(true);
-    if(master) master.gain.value=VOL_GAME+0.5;
-    if(cleanG) {} // handled by setCrushed
+    if(master) master.gain.setTargetAtTime(soundOn?VOL_GAME:0,AC.currentTime,0.25);
     trackEl.play().catch(function(){});
   } else { synthStart(); }
   if(rainGain) rainGain.gain.setTargetAtTime(0.05,AC.currentTime,0.4);
 }
 function endTrackForGame(){
   inGame=false;
+  staticStart();
+  staticTo(soundOn?STATIC_MENU:0);
   if(usingTrack&&trackEl){
-    setCrushed(false);
-    if(master) master.gain.value=VOL_MENU;
-    nowp.innerHTML='&#9834; '+TRACK_TITLE+' &mdash; FULL QUALITY';
+    if(master) master.gain.setTargetAtTime(soundOn?VOL_MENU:0,AC.currentTime,0.3);
+    nowp.innerHTML='&#9834; '+TRACK_TITLE;
   } else { synthStop(); }
   if(rainGain) rainGain.gain.setTargetAtTime(0.0,AC.currentTime,0.5);
 }
@@ -299,19 +383,12 @@ function setSound(v){
   bSnd.className=v?'ab on':'ab';
   bSnd.querySelector('.ic').innerHTML=v?'&#9834;':'&#9834;&#824;';
   lSnd.textContent=v?'SOUND':'MUTED';
-  if(master) master.gain.value=v?(inGame?VOL_GAME+0.5:VOL_MENU):0;
+  if(master) master.gain.value=v?(inGame?VOL_GAME:VOL_MENU):0;
+  if(staticGain) staticTo(v?(inGame?0:STATIC_MENU):0);
   try{localStorage.setItem('pb_snd',v?'1':'0');}catch(e){}
 }
-function setCrush(v){
-  crushOn=v;
-  bCr.className=v?'ab on':'ab';
-  setCrushed(inGame);
-  try{localStorage.setItem('pb_cr',v?'1':'0');}catch(e){}
-}
 try{if(localStorage.getItem('pb_snd')==='0')soundOn=false;}catch(e){}
-try{if(localStorage.getItem('pb_cr')==='0')crushOn=false;}catch(e){}
 bSnd.addEventListener('click',function(e){e.stopPropagation();setSound(!soundOn);});
-bCr.addEventListener('click',function(e){e.stopPropagation();setCrush(!crushOn);});
 
 /* ============== GAME ============== */
 var cv=document.getElementById('c'),cx=cv.getContext('2d');
@@ -320,6 +397,8 @@ var elSc=document.getElementById('sc'),elHp=document.getElementById('hpf'),elMul
 var elLives=document.getElementById('lives'),fl=document.getElementById('fl'),toast=document.getElementById('toast');
 var ttl=document.getElementById('ttl'),sub2=document.getElementById('sub2'),msg=document.getElementById('msg');
 var rows=document.getElementById('rows'),blink=document.getElementById('blink');
+var dos=document.getElementById('dos'),dosbtn=document.getElementById('dosbtn'),doscoin=document.getElementById('doscoin');
+var dcase=document.getElementById('dcase'),drank=document.getElementById('drank'),dscore=document.getElementById('dscore');
 var W=320,H=560,DPR=1;
 function resize(){W=window.innerWidth;H=window.innerHeight;DPR=Math.min(window.devicePixelRatio||1,2);
  cv.width=Math.floor(W*DPR);cv.height=Math.floor(H*DPR);cv.style.width=W+'px';cv.style.height=H+'px';
@@ -330,7 +409,10 @@ if(('ontouchstart' in window)||navigator.maxTouchPoints>0)pads.style.display='bl
 
 var GRAV=0.62,MOVE=2.55,JUMP=-11.5,TERM=15.5,PLW=13,PLH=22;
 var SAFE=3,HURT=4.5,FATAL=6,PPM=13;
-var DEF=[{n:'V.SIKOTIK',s:4200},{n:'ALI3N LEE',s:2650},{n:'T.S.SPECTRE',s:1400}];
+
+/* T.S. SPECTRE is the one to beat. Two names on the board, both reachable. */
+var DEF=[{n:'T.S.SPECTRE',s:1800},{n:'ALI3N LEE',s:950}];
+
 var board=[];
 function loadBoard(){try{var r=localStorage.getItem('pb_board');if(r)board=JSON.parse(r);}catch(e){}
  if(!board||!board.length)board=DEF.map(function(o){return{n:o.n,s:o.s};});
@@ -380,21 +462,25 @@ function respawn(){
   SFX.life();showToast(lives+' LIVES LEFT','#ff4a4a');
 }
 function start(){
-  initAudio();resumeAudio();rainStart();
+  initAudio();resumeAudio();staticStart();rainStart();
   if(usingTrack&&!srcNode) buildMusicChain();
   SFX.coin();
-  build();st='play';ov.style.display='none';
+  build();st='play';ov.style.display='none';dos.style.display='none';
   startTrackForGame();
 }
 coin.addEventListener('click',start);
 coin.addEventListener('touchend',function(e){e.preventDefault();start();},{passive:false});
+doscoin.addEventListener('click',function(e){e.stopPropagation();start();});
+doscoin.addEventListener('touchend',function(e){e.preventDefault();e.stopPropagation();start();},{passive:false});
+dosbtn.setAttribute('href',YT_URL);
+dosbtn.addEventListener('click',function(e){e.stopPropagation();});
+
 document.addEventListener('keydown',function(e){var k=e.key;
  if(st!=='play'&&(k===' '||k==='Enter')){e.preventDefault();start();return;}
  if(k==='ArrowLeft'||k==='a'||k==='A')K.l=true;
  if(k==='ArrowRight'||k==='d'||k==='D')K.r=true;
  if(k===' '||k==='ArrowUp'||k==='w'||k==='W')K.j=true;
  if(k==='m'||k==='M')setSound(!soundOn);
- if(k==='b'||k==='B')setCrush(!crushOn);
  if(k===' '||k.indexOf('Arrow')===0)e.preventDefault();});
 document.addEventListener('keyup',function(e){var k=e.key;
  if(k==='ArrowLeft'||k==='a'||k==='A')K.l=false;
@@ -408,7 +494,8 @@ function bind(id,f){var el=document.getElementById(id);
  el.addEventListener('touchcancel',off,{passive:false});
  el.addEventListener('mousedown',on);el.addEventListener('mouseup',off);el.addEventListener('mouseleave',off);}
 bind('pl',function(v){K.l=v;});bind('pr',function(v){K.r=v;});bind('pj',function(v){K.j=v;});
- /* ===== GAMEPAD SUPPORT ===== */
+
+/* ===== GAMEPAD SUPPORT ===== */
 var padPrev=false;
 function pollPad(){
   if(!navigator.getGamepads)return;
@@ -437,6 +524,24 @@ function land(){
   else SFX.land();
   if(p.hp<=0){p.hp=0;loseLife();}
 }
+
+/* ---- the dossier ---- */
+function caseNumber(fin,rank){
+  var a=String(21+(fin%4));
+  var b=String.fromCharCode(65+(fin%7));
+  var c=('000'+(fin%10000)).slice(-4);
+  return a+'-'+b+'-'+c+'/'+rank;
+}
+function showDossier(rank,fin){
+  drank.textContent='RANK '+rank+' OF '+board.length;
+  dscore.textContent=String(fin);
+  dcase.textContent=caseNumber(fin,rank);
+  ov.style.display='none';
+  dos.style.display='flex';
+  dos.scrollTop=0;
+  SFX.contact();
+}
+
 function gameOver(){
   st='dead';endTrackForGame();
   var fin=Math.floor(score),ni=-1;
@@ -455,7 +560,14 @@ function gameOver(){
   drawBoard(ni);
   coin.textContent='INSERT COIN';
   blink.textContent=(ni>=0)?'THE CABINET REMEMBERS':'1 CREDIT — PRESS START';
-  ov.style.display='flex';
+
+  /* rank 3 or better opens the Bureau contact screen instead */
+  if(ni>=0&&(ni+1)<=DOSSIER_RANK){
+    showDossier(ni+1,fin);
+  } else {
+    dos.style.display='none';
+    ov.style.display='flex';
+  }
 }
 function step(){
   if(respawnT>0)respawnT--;
@@ -558,14 +670,12 @@ function draw(){
 }
 function loop(){pollPad();if(st==='play'){step();draw();}requestAnimationFrame(loop);}
 
-
-/* ---- boot: find the file, then set the menu up ---- */
-setSound(soundOn); setCrush(crushOn);
+/* ---- boot ---- */
+setSound(soundOn);
 probeNext(function(name){
   if(name){
     foundName=name; usingTrack=true;
     trackEl=new Audio(); trackEl.src=name; trackEl.loop=true; trackEl.preload='auto';
-    trackEl.crossOrigin='anonymous';
     trackEl.load();
     nowp.innerHTML='&#9834; '+TRACK_TITLE+' &mdash; TAP TO HEAR IT';
   } else {
@@ -573,9 +683,10 @@ probeNext(function(name){
     nowp.innerHTML='&#9834; CHIPTUNE MODE &mdash; no audio file found';
   }
 });
-// first user gesture anywhere unlocks + starts menu music
+/* first user gesture anywhere unlocks + starts the menu mix */
 function firstGesture(){
   initAudio(); resumeAudio();
+  staticStart();
   if(usingTrack&&!srcNode){ buildMusicChain(); }
   if(st==='menu'||st==='dead') menuMusic();
   document.removeEventListener('touchstart',firstGesture);
