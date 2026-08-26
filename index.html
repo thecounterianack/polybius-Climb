@@ -406,6 +406,23 @@ function bind(id,f){var el=document.getElementById(id);
  el.addEventListener('touchcancel',off,{passive:false});
  el.addEventListener('mousedown',on);el.addEventListener('mouseup',off);el.addEventListener('mouseleave',off);}
 bind('pl',function(v){K.l=v;});bind('pr',function(v){K.r=v;});bind('pj',function(v){K.j=v;});
+ /* ===== GAMEPAD SUPPORT ===== */
+var padPrev=false;
+function pollPad(){
+  if(!navigator.getGamepads)return;
+  var list=navigator.getGamepads(), gp=null;
+  for(var i=0;i<list.length;i++){ if(list[i]){gp=list[i];break;} }
+  if(!gp)return;
+  function btn(n){return gp.buttons&&gp.buttons[n]&&gp.buttons[n].pressed;}
+  var ax=(gp.axes&&gp.axes.length)?gp.axes[0]:0;
+  K.l=(ax<-0.28)||btn(14);
+  K.r=(ax>0.28)||btn(15);
+  K.j=btn(0)||btn(12)||btn(3);
+  var conf=btn(0)||btn(1)||btn(9)||btn(8);
+  if(conf&&!padPrev&&st!=='play'){ start(); }
+  padPrev=conf;
+}
+
 document.addEventListener('touchmove',function(e){if(st==='play')e.preventDefault();},{passive:false});
 
 var rain=[];for(var i=0;i<80;i++)rain.push({x:Math.random()*700,y:Math.random()*900,s:5+Math.random()*7,l:9+Math.random()*12});
@@ -537,7 +554,8 @@ function draw(){
     cx.restore();}
   cx.restore();cx.restore();
 }
-function loop(){if(st==='play')step();draw();requestAnimationFrame(loop);}
+function loop(){pollPad();if(st==='play'){step();draw();}requestAnimationFrame(loop);}
+
 
 /* ---- boot: find the file, then set the menu up ---- */
 setSound(soundOn); setCrush(crushOn);
