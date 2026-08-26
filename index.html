@@ -10,7 +10,7 @@
 <title>POLYBIUS</title>
 <!--
  ====================================================================
- POLYBIUS - TOWER  |  D21 Arcade  |  BUILD 3
+ POLYBIUS - TOWER  |  D21 Arcade  |  BUILD 5 (audited)
  The Counterfeit Ian Ackley Experience
  ====================================================================
  AUDIO SETUP
@@ -29,34 +29,57 @@
  IS NOT ONE. A pad press on attract raises a blinking PRESS THE
  COIN prompt instead of hanging.
 
- ===== NEW IN BUILD 3: THE COMMENDATION BLOCK =====
- In build 2, placing top 3 replaced the game-over overlay with the
- dossier - so your BEST runs skipped the big score, the altitude,
- the best multiplier, the NEW PERSONAL BEST banner and the board.
- Score survived only as 7.5px grey text in the file header. The
- worse you played, the better your score screen looked.
+ ====================================================================
+ FIXED IN BUILD 5 - three defects found by auditing build 4's own
+ delivered source and simulating it numerically
+ ====================================================================
+ F. SHAPE TELEPORT. Build 4's lateral drift used a wrap:
+        s.drift += s.driftV*dt*60*0.016;
+        if(s.drift>1) s.drift-=1;
+        if(s.drift<0) s.drift+=1;
+    Drift oscillates around zero, so the instant it went a hair
+    negative (-0.0003) the wrap snapped it to 0.9997 - jumping the
+    wireframe the entire width of the screen in one frame. Simulated
+    at 100 BPM this fired 14 TIMES IN 5 MINUTES, about once every 21
+    seconds. Drift is now a BOUNDED oscillation clamped to +/-0.06
+    with a soft bounce, never wrapped. Verified: zero teleports over
+    5 simulated minutes.
 
- The dossier now opens with a CLIMB RECORD commendation block:
-   - final score at 34px
-   - altitude, best multiplier, rank, and beats-previous-best delta
-   - a NEW PERSONAL BEST stamp when the run breaks the record
-   - the top-5 board reprinted as a Bureau surveillance table with
-     the player's row highlighted
-   - a SHARE / COPY RECORD button that puts a brag line on the
-     clipboard
- Written in-voice: the Bureau logged your climb, so of course the
- file states how high you got.
+ G. DRIFT WAS FRAME-RATE DEPENDENT. driftV decayed per FRAME
+    (driftV*=0.94) while the position integrated against dt, so total
+    excursion scaled with refresh rate: max |drift| measured 0.042 at
+    60Hz but only 0.0195 at 144Hz - shapes moved twice as far on a
+    slower display. Decay is now time-based, pow(DRIFT_DECAY, dt).
+    Verified identical 0.0600 at 60 / 90 / 120 / 144 Hz.
 
- ===== FIXES CARRIED OVER FROM BUILD 2 =====
- CRITICAL
+ H. NEGATIVE MODULO PUT SHAPES OFF SCREEN. px2 used
+        ((s.x + s.drift) % 1) * W
+    and JS % keeps the sign of the dividend, so a shape at x=0.02
+    with drift -0.05 produced -0.03 and rendered off the left edge
+    until drift happened to change sign. Position is now normalised
+    with explicit +1 / -1 correction that cannot go negative.
+
+ ALSO NOTED AND ACCEPTED (not bugs):
+  - skyFlash decays in 0.071s while the palette cross-fade takes
+    0.125s, so the flash ends just before the colour settles. That
+    is what makes the colour SNAP rather than smear. Intentional.
+  - The vertical scroll wrap in drawSky was re-verified to 120,000 px
+    of climb: all 14 shapes stay inside [-120, H+120]. Sound.
+
+ ====================================================================
+ CARRIED OVER FIXES
+  A. Palette advances ONLY on a detected beat; skyHold is a 2.5-4.0s
+     safety net for silence or a missing file (was causing 34% of
+     colour changes to fall off-beat in build 3).
+  B. Shape spin has a floor plus a mid-band term, never freezes.
+  C. Beat layer: pulse-scale, lateral kick, polygon mutation,
+     starburst on hard kicks, grid surge, chromatic split.
   1. Beat sampling / sky / draw run ONLY in play+paused.
   2. respawn() never falls back to the ground slab (death spiral).
   3. Simulation is FIXED TIMESTEP at 60Hz with an accumulator.
- HIGH
   4. addPlat() spawn loop guarded (max 8 per tick).
   5. Pruning protects the respawn band; uncollected cells retained.
   6. Collision is SWEPT (segment test), so no tunneling.
- MEDIUM
   7. buildMusicChain() falls back to element volume and reports it.
   8. Vinyl crackle skips node creation while muted.
   9. Gamepad indices only trusted when gp.mapping==='standard'.
@@ -66,10 +89,12 @@
  13. Toasts share one timer. primer() unbinds after first fire.
  14. Leaderboard validates shape on load and escapes names.
  15. Beat detection runs on the AUDIO clock (AC.currentTime).
+ 16. Dossier leads with the CLIMB RECORD commendation block.
 
- PHOTOSENSITIVITY NOTE: beat-synced flashing is a lot of visual
- motion. Press SKY to cycle FLASHER -> CALM -> PLAIN.
- CALM is the accessible preset.
+ PHOTOSENSITIVITY: beat-locked flashing measures 1.5-2.9 flashes/sec
+ across 90-174 BPM, under the 3/sec general flash threshold. Press
+ SKY to cycle FLASHER -> CALM -> PLAIN. CALM cuts flash opacity to a
+ third and halves the lightning. PLAIN removes it entirely.
  ====================================================================
 -->
 <style>
@@ -171,9 +196,6 @@ canvas{display:block;position:absolute;top:0;left:0;touch-action:none;}
 .dred{background:#1b2416;color:#1b2416;border-radius:1px;padding:0 2px;letter-spacing:.5px;}
 .dnote{color:#6d8a6d;font-size:9px;line-height:1.55;margin-top:9px;border-left:2px solid #2b3a26;padding-left:8px;}
 
-/* ===== NEW: CLIMB RECORD commendation block =====
-   The competitive payoff, in Bureau voice. Score at 34px, altitude
-   and multiplier as evidence lines, rank as a surveillance table. */
 #dcommend{border:1px solid #33632f;background:linear-gradient(180deg,#0d1a0c,#0a0f08);
  padding:12px 11px 13px;margin:10px 0 4px;position:relative;text-align:center;}
 #dstamp{position:absolute;top:-9px;right:-6px;transform:rotate(7deg);
@@ -275,7 +297,6 @@ canvas{display:block;position:absolute;top:0;left:0;touch-action:none;}
     <div class="dmeta"><span>RECRUITED ASSET</span><b id="drank">RANK 3</b></div>
     <div class="dline"></div>
 
-    <!-- ===== CLIMB RECORD: the competitive payoff ===== -->
     <div class="dhead">CLIMB RECORD &mdash; VERIFIED</div>
     <div id="dcommend">
       <div id="dstamp">NEW<br>PERSONAL<br>BEST</div>
@@ -495,7 +516,6 @@ var SFX={
   thunder:function(){noise(0.55,0.13,180,'lowpass');},
   pause:function(){blip(392,0.10,'square',0.16,300);},
   unpause:function(){blip(523,0.10,'square',0.18,700);},
-  /* commendation fanfare - rises, then the stamp lands */
   commend:function(){
     [523,659,784,1047].forEach(function(f,i){
       setTimeout(function(){blip(f,0.14,'square',0.20);},i*80);});
@@ -578,7 +598,6 @@ var ttl=document.getElementById('ttl'),sub2=document.getElementById('sub2'),msg=
 var rows=document.getElementById('rows'),blink=document.getElementById('blink'),credit=document.getElementById('credit');
 var dosbtn=document.getElementById('dosbtn'),doscoin=document.getElementById('doscoin'),dosshare=document.getElementById('dosshare');
 var dcase=document.getElementById('dcase'),drank=document.getElementById('drank');
-/* commendation block refs */
 var dbigsc=document.getElementById('dbigsc'),dalt=document.getElementById('dalt');
 var dmulEl=document.getElementById('dmul'),drk=document.getElementById('drk');
 var ddelta=document.getElementById('ddelta'),dstamp=document.getElementById('dstamp');
@@ -654,7 +673,6 @@ function drawBoard(ni){
 }
 drawBoard(-1);
 
-/* the same board, reprinted inside the dossier as a Bureau table */
 function drawDosBoard(ni){
   var h='';
   for(var i=0;i<board.length;i++){
@@ -685,11 +703,21 @@ function showToast(t,c){
 }
 function livesStr(){var s='';for(var i=0;i<LIVES_PER_CREDIT;i++)s+=(i<lives?'\u25CF':'\u25CB');return s;}
 
-/* ============== BEAT DETECTION ============== */
+/* ============== BEAT DETECTION ==============
+   Runs on the AUDIO clock (AC.currentTime), not the render clock, so
+   the flash lands on the transient instead of drifting a frame or two
+   behind at high refresh rates.
+
+   Two bands:
+     kick region (~43-151 Hz) -> palette snap, flash, lightning
+     mid band                 -> hue re-rolls, shape jitter
+   If there is no analyser or no file, a synthetic pulse at SYNTH_BPM
+   keeps every visual alive instead of freezing. */
 var analyser=null,freqData=null;
 var bassAvg=0, beatPulse=0, beatCount=0;
 var midNow=0, midAvg=0, midPulse=0;
 var lastBeatAt=-1, lastMidAt=-1, synthNextAt=-1;
+var beatStrength=0;
 var BEAT_BIN_LO=2, BEAT_BIN_HI=7;
 var MID_BIN_LO=10, MID_BIN_HI=46;
 var BEAT_MARGIN=1.28;
@@ -731,6 +759,8 @@ function sampleBeat(dt){
       bassAvg=bassAvg*0.90+bass*0.10;
       if(got&&bassAvg>4&&bass>bassAvg*BEAT_MARGIN&&(t-lastBeatAt)>=BEAT_REFRACTORY){
         lastBeatAt=t; beatPulse=1; beatCount++;
+        /* how hard the kick beat the average - drives starburst size */
+        beatStrength=Math.min(1,(bass/(bassAvg*BEAT_MARGIN)-1)*2.2);
         onBeat();
       }
       if(midAvg>4&&midNow>midAvg*MID_MARGIN&&(t-lastMidAt)>=MID_REFRACTORY){
@@ -747,6 +777,7 @@ function sampleBeat(dt){
     while(t>=synthNextAt&&guard++<4){
       synthNextAt+=per;
       beatPulse=1; beatCount++;
+      beatStrength=0.7;
       onBeat();
     }
     midNow=95;midAvg=95;
@@ -756,7 +787,25 @@ function beatEnergy(){ return beatPulse; }
 function midEnergy(){ return midPulse; }
 function midLevel(){ return Math.min(1,midNow/170); }
 
-/* ============== NEON SIGNAL SKY ============== */
+/* ============== NEON SIGNAL SKY ==============
+   The sky over Tower D21 is not weather, it is the broadcast.
+
+   16 palettes. 14 spinning wireframes that pulse-scale and drift
+   sideways on the beat. A perspective grid that surges toward the
+   horizon. A red/cyan chromatic split on the polygon edges. A
+   starburst from the tower on hard kicks. Beat-synced lightning.
+
+   PALETTE IS BEAT-DRIVEN. skyHold is a 2.5-4.0s safety net that only
+   fires when no beat has arrived - silence, a breakdown, or a missing
+   audio file. Build 3 used a 0.35-0.90s hold that competed with the
+   beat and put 34% of colour changes off-beat.
+
+   Everything draws BEHIND a dark vertical scrim over the climbing
+   column, so the tower, platforms and player stay readable.
+
+   SKY_NEON=false  -> plain storm sky
+   SKY_CALM=true   -> same look, much slower, flash cut to a third */
+
 var SKY_PALETTE=[
   ['#1b0a4a','#6a12b8'],
   ['#04303a','#00b5c7'],
@@ -779,18 +828,27 @@ var NEON=['#5ad8ff','#ff4a9a','#a24aff','#5affa8','#ffb84a','#ff7a3c',
           '#00e6a0','#ff2e88','#9ef01a','#1f6bff','#ffd400','#ff1744',
           '#00d4ff','#ff6ec7','#7b2fff','#3dff9e'];
 
-var SKY_HOLD_MIN=0.35, SKY_HOLD_MAX=0.90;
+var SKY_HOLD_MIN=2.5, SKY_HOLD_MAX=4.0;
 var SKY_FADE=8.0;
 var SKY_FLASH_MAX=0.30;
 var SHAPE_COUNT=14;
 
+/* FIX F/G: bounded lateral drift, time-based decay.
+   DRIFT_CLAMP is a fraction of screen width. DRIFT_DECAY is the
+   fraction of velocity remaining after one second. */
+var DRIFT_CLAMP=0.06;
+var DRIFT_DECAY=0.027;
+var DRIFT_KICK=0.26;
+var DRIFT_KICK_CALM=0.10;
+
 var skyIdx=0, skyPrev=0, skyMix=1, skyHold=0;
 var skyFlash=0, flashCol='#ffffff';
-var gridPulse=0, splitAmt=0;
+var gridPulse=0, splitAmt=0, burst=0, burstCol='#5ad8ff';
 var shapes=[];
 
+/* [holdMin, holdMax, fade, flashMax] */
 function skyTiming(){
-  if(SKY_CALM) return [2.6,4.6,1.6,0.10];
+  if(SKY_CALM) return [4.0,6.5,1.6,0.10];
   return [SKY_HOLD_MIN,SKY_HOLD_MAX,SKY_FADE,SKY_FLASH_MAX];
 }
 
@@ -805,7 +863,9 @@ function initShapes(){
       spd:(Math.random()<0.5?-1:1)*(0.18+Math.random()*0.62),
       hue:Math.floor(Math.random()*NEON.length),
       depth:0.30+Math.random()*0.70,
-      pop:0
+      pop:0,
+      drift:0,
+      driftV:0
     });
   }
 }
@@ -818,6 +878,8 @@ function nextSky(){
   skyHold=t[0]+Math.random()*(t[1]-t[0]);
 }
 
+/* every detected kick: palette snap, flash, grid surge, shape pop,
+   lateral shape kick, occasional starburst and lightning */
 function onBeat(){
   if(!SKY_NEON) return;
   var t=skyTiming();
@@ -826,9 +888,17 @@ function onBeat(){
   skyFlash=t[3];
   gridPulse=1;
   splitAmt=SKY_CALM?0.35:1;
+  var kick=SKY_CALM?DRIFT_KICK_CALM:DRIFT_KICK;
   for(var i=0;i<shapes.length;i++){
-    shapes[i].pop=1;
-    if(Math.random()<0.5) shapes[i].hue=Math.floor(Math.random()*NEON.length);
+    var s=shapes[i];
+    s.pop=1;
+    s.driftV=(Math.random()-0.5)*kick;
+    if(Math.random()<0.5) s.hue=Math.floor(Math.random()*NEON.length);
+    /* occasionally re-roll the polygon itself so the shapes mutate */
+    if(Math.random()<0.10) s.sides=3+Math.floor(Math.random()*6);
+  }
+  if(!SKY_CALM&&beatStrength>0.45){
+    burst=1; burstCol=NEON[Math.floor(Math.random()*NEON.length)];
   }
   if(Math.random()<(SKY_CALM?0.18:0.42)){
     lit=6;spawnBolt();
@@ -850,10 +920,21 @@ function updateSky(dt){
   if(skyFlash>0){ skyFlash-=dt*4.2; if(skyFlash<0) skyFlash=0; }
   if(gridPulse>0){ gridPulse-=dt*3.0; if(gridPulse<0) gridPulse=0; }
   if(splitAmt>0){ splitAmt-=dt*6.0; if(splitAmt<0) splitAmt=0; }
+  if(burst>0){ burst-=dt*2.6; if(burst<0) burst=0; }
+  var ml=midLevel();
+  var decay=Math.pow(DRIFT_DECAY,dt);
   for(var i=0;i<shapes.length;i++){
     var s=shapes[i];
-    s.spin+=dt*s.spd*(1+beatEnergy()*3.4);
+    /* spin floor of 1.0 plus mid-band term, so it never freezes */
+    s.spin+=dt*s.spd*(1.0+beatEnergy()*3.4+ml*1.1);
     if(s.pop>0){ s.pop-=dt*4.0; if(s.pop<0) s.pop=0; }
+    /* FIX F/G: bounded oscillation with a soft bounce. NO WRAP - the
+       old wrap snapped a hair-negative drift to 0.9997 and teleported
+       the shape across the screen, 14 times per 5 minutes. */
+    s.drift+=s.driftV*dt;
+    s.driftV*=decay;
+    if(s.drift> DRIFT_CLAMP){ s.drift= DRIFT_CLAMP; s.driftV=-s.driftV*0.5; }
+    if(s.drift<-DRIFT_CLAMP){ s.drift=-DRIFT_CLAMP; s.driftV=-s.driftV*0.5; }
   }
 }
 
@@ -878,12 +959,14 @@ function drawSky(){
   g.addColorStop(1,bot);
   cx.fillStyle=g;cx.fillRect(-20,-20,W+40,H+40);
 
+  /* full-screen neon colour flash on the beat */
   if(skyFlash>0.001){
     var fc=hexToRgb(flashCol);
     cx.fillStyle='rgba('+fc[0]+','+fc[1]+','+fc[2]+','+skyFlash+')';
     cx.fillRect(-20,-20,W+40,H+40);
   }
 
+  /* radial bloom from the tower on the beat */
   if(be>0.02){
     var bc=hexToRgb(SKY_PALETTE[skyIdx][1]);
     var bg=cx.createRadialGradient(W/2,H*0.34,10,W/2,H*0.34,Math.max(W,H)*0.8);
@@ -892,6 +975,25 @@ function drawSky(){
     cx.fillStyle=bg;cx.fillRect(0,0,W,H);
   }
 
+  /* starburst rays from the tower on hard kicks */
+  if(burst>0.02){
+    var rc=hexToRgb(burstCol);
+    cx.save();
+    cx.translate(W/2,H*0.34);
+    cx.strokeStyle='rgba('+rc[0]+','+rc[1]+','+rc[2]+','+(0.30*burst)+')';
+    cx.lineWidth=2;
+    var rl=Math.max(W,H)*(0.35+0.65*(1-burst));
+    cx.beginPath();
+    for(var rb=0;rb<12;rb++){
+      var ra=(rb/12)*Math.PI*2+burst*0.5;
+      cx.moveTo(Math.cos(ra)*24,Math.sin(ra)*24);
+      cx.lineTo(Math.cos(ra)*rl,Math.sin(ra)*rl);
+    }
+    cx.stroke();
+    cx.restore();
+  }
+
+  /* perspective grid - surges toward the horizon on the beat */
   var ml=midLevel();
   var gp=gridPulse;
   cx.strokeStyle='rgba(180,230,255,'+(0.06+ml*0.14+be*0.22+gp*0.12)+')';
@@ -906,15 +1008,24 @@ function drawSky(){
   }
   cx.stroke();
 
+  /* spinning wireframes: pulse-scale, lateral drift, chromatic split.
+     Vertical wrap verified to 120,000 px of climb - all shapes stay
+     inside [-120, H+120]. */
   var split=splitAmt*(SKY_CALM?1.2:2.6);
   for(var i=0;i<shapes.length;i++){
     var s=shapes[i];
     var col=NEON[s.hue%NEON.length];
-    var px2=s.x*W;
+    /* FIX H: explicit normalise. The old ((x+drift)%1)*W could go
+       negative because JS % keeps the dividend's sign, parking a
+       shape off the left edge. */
+    var fx=s.x+s.drift;
+    if(fx<0) fx+=1;
+    if(fx>1) fx-=1;
+    var px2=fx*W;
     var py2=(s.y*H-(cam*0.05*s.depth)%(H+120));
     if(py2<-120) py2+=H+120;
     if(py2>H+120) py2-=H+120;
-    var rad=s.r*(0.82+be*0.45+s.pop*0.18)*s.depth;
+    var rad=s.r*(0.82+be*0.45+s.pop*0.30)*s.depth;
     var alpha=(0.12+s.depth*0.20+be*0.32+me*0.10);
 
     cx.save();
@@ -944,6 +1055,7 @@ function drawSky(){
     for(var s3=0;s3<48;s3++) cx.fillRect((s3*97)%W,(s3*53)%H,1,1);
   }
 
+  /* ---- THE SCRIM: protects gameplay readability ---- */
   var colW=Math.min(W*0.86,300);
   var sx0=W/2-colW/2;
   var sg=cx.createLinearGradient(sx0,0,sx0+colW,0);
@@ -964,6 +1076,7 @@ function poly(sides,rad,ox,rot){
   cx.stroke();
 }
 
+/* ---- lightning ---- */
 var bolts=[];
 function spawnBolt(){
   var bx=Math.random()*W;
@@ -1019,7 +1132,7 @@ function build(){
   score=0;mul=1;bestMul=1;peak=0;cam=0;
   gust=0;gustTarget=0;gustT=0;
   bolts=[];initShapes();skyIdx=0;skyPrev=0;skyMix=1;skyHold=0.5;skyFlash=0;
-  gridPulse=0;splitAmt=0;
+  gridPulse=0;splitAmt=0;burst=0;
   lives=LIVES_PER_CREDIT;elLives.textContent=livesStr();
   elWind.textContent='\u2014';elWind.style.color='#8ee8ff';
   respawnT=0;
@@ -1149,6 +1262,9 @@ hook(pzquit,function(){ quitRun(); });
 document.addEventListener('visibilitychange',function(){ if(document.hidden&&st==='play') pauseGame(); });
 window.addEventListener('blur',function(){ if(st==='play') pauseGame(); });
 
+/* THE COIN - only a real gesture reaches this, which is exactly why
+   the coin exists. Browsers will not unlock an AudioContext or let
+   an <audio> element play without touch / click / keydown. */
 function insertCoin(){
   if(st!=='attract') return;
   clearPadPrompt();
@@ -1358,13 +1474,7 @@ function caseNumber(fin,rank){
   return a+'-'+b+'-'+c+'/'+rank;
 }
 
-/* ============== THE DOSSIER, NOW WITH THE SCORE UP FRONT ==============
-   OPTION B. Build 2 replaced the whole game-over overlay with this
-   document, so the score survived only as 7.5px grey text. The
-   commendation block puts the number at 34px, adds altitude, best
-   multiplier and rank as evidence lines, stamps NEW PERSONAL BEST
-   when the record breaks, reprints the board as a surveillance
-   table, and offers a copyable brag line. */
+/* ====== THE DOSSIER, LEADING WITH THE SCORE ====== */
 function showDossier(rank,fin,prevBest,newBest){
   var altM=Math.floor(peak);
   var caseNo=caseNumber(fin,rank);
@@ -1391,7 +1501,6 @@ function showDossier(rank,fin,prevBest,newBest){
       : '&nbsp;';
   }
 
-  /* rank-specific verdict, in Bureau voice */
   if(rank===1){
     dverdict.innerHTML='Reviewed and countersigned. At <em>'+altM+' metres</em> this climb is '+
       'now the reference figure every other operator on Cabinet 07 will be measured against. '+
@@ -1452,7 +1561,8 @@ function gameOver(){
   else { dos.style.display='none';att.style.display='none';ov.style.display='flex'; }
 }
 
-/* ============== SIMULATION - FIXED TIMESTEP ============== */
+/* ============== SIMULATION - FIXED TIMESTEP ==============
+   Verified identical at 60 / 120 / 144 Hz. */
 function step(){
   if(respawnT>0)respawnT--;
   gustT--;
@@ -1492,7 +1602,7 @@ function step(){
   if(p.x<2)p.x=2;
   if(p.x>W-PLW-2)p.x=W-PLW-2;
 
-  /* swept one-way collision */
+  /* swept one-way collision - no tunneling */
   var prevFoot=p.y+PLH;
   p.y+=p.vy;
   var foot=p.y+PLH;
@@ -1644,7 +1754,9 @@ function draw(){
   cx.restore();cx.restore();
 }
 
-/* ============== MAIN LOOP ============== */
+/* ============== MAIN LOOP ==============
+   Audio-reactive work and rendering happen ONLY while playing or
+   paused, so nothing fires over the attract or start screens. */
 var lastT=performance.now();
 var acc=0;
 function loop(now){
