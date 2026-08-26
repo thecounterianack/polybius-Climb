@@ -108,7 +108,7 @@ var CANDIDATES=['Song.mp3'];
 
 
 var TRACK_TITLE='INSERT COINS, INVERT MINDS';
-var VOL_MENU=0.85, VOL_GAME=0.34;
+var VOL_MENU=0.85, VOL_GAME=0.52;
 
 /* ============== AUDIO ============== */
 var AC=null,master=null,sfxG=null,synthG=null,noiseBuf=null;
@@ -158,7 +158,9 @@ function makeCrusher(){
   return node;
 }
 function buildMusicChain(){
-  if(!AC||!trackEl||srcNode) return;
+  if(!AC||!trackEl) return;
+if(srcNode){ setCrushed(inGame); return; }
+
   try{
     srcNode=AC.createMediaElementSource(trackEl);
   }catch(e){ srcNode=null; return; }
