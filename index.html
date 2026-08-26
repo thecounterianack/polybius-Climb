@@ -124,7 +124,7 @@ function initAudio(){
   if(!Ctx) return;
   AC=new Ctx();
   master=AC.createGain(); master.gain.value=0.9; master.connect(AC.destination);
-  sfxG=AC.createGain();   sfxG.gain.value=0.44;  sfxG.connect(master);
+     sfxG=AC.createGain();  sfxG.gain.value=0.34; sfxG.connect(master);
   synthG=AC.createGain(); synthG.gain.value=0.30; synthG.connect(master);
   var n=AC.sampleRate*2; noiseBuf=AC.createBuffer(1,n,AC.sampleRate);
   var d=noiseBuf.getChannelData(0);
