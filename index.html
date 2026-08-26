@@ -18,20 +18,21 @@
 
       Song.mp3
 
- If you rename it, change CANDIDATES below to match.
  Do NOT set crossOrigin on the audio element - it taints the
- media element source on GitHub Pages and results in silence.
+ media element source and results in silence.
 
- HOW THE MUSIC BEHAVES
- - MENU  : track plays softly with a static / hiss bed under it
- - GAME  : static fades out, music lifts and sits above the sfx
- - OVER  : back to the soft menu mix
- If no audio file loads it falls back to a synthesised chip loop.
+ HOW THE AUDIO WORKS IN THIS BUILD
+ The coin press IS the user gesture. Browsers will not play audio
+ before a gesture, so nothing is attempted until then. On INSERT
+ COIN we: create the context, await resume(), build the chain,
+ then call play(). The song then loops for the entire session -
+ it is never restarted on death, only turned down.
 
- THE DOSSIER
- Place 3rd or better and the game-over panel is replaced by a
- BUREAU CONTACT screen with a link out to the channel.
- Change YT_URL below to repoint that button.
+ There is no SOUND button and no CRUSH button. Use the device
+ volume or the silent switch.
+
+ There is a small STATUS readout on the menu (id=nowp). If audio
+ fails it prints the reason there instead of failing silently.
  ====================================================================
 -->
 <style>
@@ -46,10 +47,6 @@ canvas{display:block;position:absolute;top:0;left:0;touch-action:none;}
 #hp{width:80px;height:5px;background:#161b26;border:1px solid #2e3644;margin-top:6px;margin-left:auto;}
 #hpf{height:100%;width:100%;background:linear-gradient(90deg,#ff3b3b,#ff9a4a);}
 #mul{color:#ffb84a;font-size:11px;font-weight:700;margin-top:4px;}
-#actrl{position:absolute;top:calc(env(safe-area-inset-top) + 3px);left:50%;transform:translateX(-50%);display:flex;gap:14px;z-index:7;align-items:flex-start;}
-.ab{color:#3f4756;font-size:8px;letter-spacing:1.5px;padding:7px 8px;cursor:pointer;text-align:center;line-height:1.5;}
-.ab.on{color:#5ad8ff;}
-.ab .ic{font-size:14px;display:block;}
 #ov{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(4,5,9,.96);z-index:20;text-align:center;padding:20px;overflow-y:auto;}
 #ttl{font-size:15px;letter-spacing:6px;margin-bottom:2px;color:#5ad8ff;}
 #ttl b{color:#ff4a4a;}
@@ -67,8 +64,15 @@ canvas{display:block;position:absolute;top:0;left:0;touch-action:none;}
 .row.you span:first-child{color:#5ad8ff;}
 .row.new{color:#ffb84a;background:rgba(255,184,74,.12);}
 .row.new span:first-child{color:#ffb84a;}
-#coin{margin-top:12px;padding:17px 38px;background:#5ad8ff;color:#04121a;border:none;font-family:inherit;font-size:13px;font-weight:700;letter-spacing:2px;border-radius:3px;touch-action:manipulation;}
-#blink{color:#ffb84a;font-size:9px;letter-spacing:3px;margin-top:9px;animation:bk 1.1s steps(2,end) infinite;}
+
+/* the taped coin */
+#coinwrap{position:relative;margin-top:16px;}
+#coin{position:relative;width:104px;height:104px;border-radius:50%;background:radial-gradient(circle at 34% 30%,#f2e6b8 0%,#d9c37e 34%,#a88b45 74%,#6f5a26 100%);border:none;color:#3a2f11;font-family:inherit;font-size:10px;font-weight:700;letter-spacing:1.5px;line-height:1.35;box-shadow:0 3px 0 #4a3c18,0 6px 14px rgba(0,0,0,.6),inset 0 0 0 4px rgba(255,255,255,.16),inset 0 0 0 6px rgba(90,70,20,.35);touch-action:manipulation;display:flex;align-items:center;justify-content:center;text-align:center;padding:14px;text-shadow:0 1px 0 rgba(255,255,255,.35);}
+#coin:active{box-shadow:0 1px 0 #4a3c18,0 3px 8px rgba(0,0,0,.6),inset 0 0 0 4px rgba(255,255,255,.16),inset 0 0 0 6px rgba(90,70,20,.35);transform:translateY(2px);}
+.tape{position:absolute;width:56px;height:20px;background:rgba(226,222,198,.30);border-left:1px solid rgba(255,255,255,.22);border-right:1px solid rgba(255,255,255,.22);box-shadow:0 1px 3px rgba(0,0,0,.4);pointer-events:none;}
+#tape1{top:-6px;left:-16px;transform:rotate(-38deg);}
+#tape2{bottom:-6px;right:-16px;transform:rotate(-38deg);}
+#blink{color:#ffb84a;font-size:9px;letter-spacing:3px;margin-top:14px;animation:bk 1.1s steps(2,end) infinite;}
 @keyframes bk{0%,49%{opacity:1}50%,100%{opacity:0}}
 #pads{position:absolute;bottom:0;left:0;right:0;height:36%;display:none;z-index:6;}
 .pad{position:absolute;bottom:calc(env(safe-area-inset-bottom) + 14px);width:78px;height:78px;border:2px solid rgba(255,255,255,.2);border-radius:50%;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.55);font-size:22px;background:rgba(255,255,255,.05);}
@@ -101,9 +105,6 @@ canvas{display:block;position:absolute;top:0;left:0;touch-action:none;}
 <canvas id="c"></canvas>
 <div id="fl"></div>
 <div id="toast"></div>
-<div id="actrl">
-  <div class="ab on" id="bSnd"><span class="ic">&#9834;</span><span id="lSnd">SOUND</span></div>
-</div>
 <div id="hud">
   <div><div id="sc">0</div><div class="lb">SCORE</div></div>
   <div id="right"><div id="lives">&#9679;&#9679;&#9679;</div><div class="lb">LIVES</div>
@@ -117,7 +118,11 @@ canvas{display:block;position:absolute;top:0;left:0;touch-action:none;}
   <div id="msg">The tower does not end. Climb until your lives run out.<br>
    Every metre scores. <span class="k">Blue cells</span> raise your multiplier.</div>
   <div id="board"><div class="bh">HIGH SCORES</div><div id="rows"></div></div>
-  <button id="coin">INSERT COIN</button>
+  <div id="coinwrap">
+    <button id="coin">INSERT<br>COIN</button>
+    <div class="tape" id="tape1"></div>
+    <div class="tape" id="tape2"></div>
+  </div>
   <div id="blink">1 CREDIT &mdash; PRESS START</div>
 </div>
 
@@ -193,61 +198,116 @@ canvas{display:block;position:absolute;top:0;left:0;touch-action:none;}
 <script>
 (function(){
 /* ============== CONFIG ============== */
-var CANDIDATES=['Song.mp3'];
-
+var TRACK_FILE='Song.mp3';
 var TRACK_TITLE='INSERT COINS, INVERT MINDS';
-
-/* the dossier link */
 var YT_URL='https://youtube.com/@x-ackley';
-
-/* place at this rank or better (1 = first) to trigger the dossier */
 var DOSSIER_RANK=3;
 
 /* master level per state */
-var VOL_MENU=0.30;   /* soft on the menu */
-var VOL_GAME=0.62;   /* lifts once you insert a coin */
+var VOL_MENU=0.34;   /* after game over, song keeps going softly */
+var VOL_GAME=0.62;   /* during play */
 
-/* static bed level on the menu */
-var STATIC_MENU=0.055;
+/* vinyl crackle level */
+var CRACKLE_MENU=0.85;
 
 /* ============== AUDIO ============== */
-var AC=null,master=null,musicG=null,sfxG=null,synthG=null,noiseBuf=null;
-var soundOn=true;
+var AC=null,master=null,musicG=null,sfxG=null,noiseBuf=null;
 var trackEl=null,srcNode=null;
-var usingTrack=false,inGame=false,foundName='';
-var bSnd=document.getElementById('bSnd');
-var lSnd=document.getElementById('lSnd'),nowp=document.getElementById('nowp');
+var audioReady=false,songStarted=false,inGame=false;
+var nowp=document.getElementById('nowp');
+
+function status(t){ if(nowp) nowp.innerHTML=t; }
 
 function initAudio(){
-  if(AC) return;
+  if(AC) return true;
   var Ctx=window.AudioContext||window.webkitAudioContext;
-  if(!Ctx) return;
+  if(!Ctx){ status('AUDIO UNSUPPORTED'); return false; }
   AC=new Ctx();
-  master=AC.createGain(); master.gain.value=soundOn?VOL_MENU:0; master.connect(AC.destination);
-  musicG=AC.createGain(); musicG.gain.value=1;   musicG.connect(master);
-  sfxG=AC.createGain();   sfxG.gain.value=0.34;  sfxG.connect(master);
-  synthG=AC.createGain(); synthG.gain.value=0.30; synthG.connect(master);
+  master=AC.createGain(); master.gain.value=VOL_GAME; master.connect(AC.destination);
+  musicG=AC.createGain(); musicG.gain.value=1.0;  musicG.connect(master);
+  sfxG=AC.createGain();   sfxG.gain.value=0.34;   sfxG.connect(master);
   var n=AC.sampleRate*2; noiseBuf=AC.createBuffer(1,n,AC.sampleRate);
   var d=noiseBuf.getChannelData(0);
   for(var i=0;i<n;i++) d[i]=Math.random()*2-1;
+  return true;
 }
-function resumeAudio(){ if(AC&&AC.state==='suspended') AC.resume(); }
 
-function probeNext(done){ done(CANDIDATES[0]); }
+function resumeAudio(cb){
+  if(!AC){ if(cb)cb(); return; }
+  if(AC.state==='running'){ if(cb)cb(); return; }
+  var r;
+  try{ r=AC.resume(); }catch(e){ if(cb)cb(); return; }
+  if(r&&typeof r.then==='function'){
+    r.then(function(){ if(cb)cb(); }).catch(function(){ if(cb)cb(); });
+  } else {
+    setTimeout(function(){ if(cb)cb(); },60);
+  }
+}
 
-/* ---- plain music chain, no crusher ---- */
+/* the audio element is created up front but never played until the coin */
+function makeTrack(){
+  if(trackEl) return;
+  trackEl=new Audio();
+  trackEl.src=TRACK_FILE;
+  trackEl.loop=true;
+  trackEl.preload='auto';
+  trackEl.addEventListener('error',function(){
+    status('&#9834; AUDIO FILE NOT FOUND &mdash; CHECK '+TRACK_FILE);
+  });
+  trackEl.addEventListener('canplay',function(){
+    if(songStarted) pushPlay();
+  });
+  trackEl.load();
+}
+
 function buildMusicChain(){
-  if(!AC||!trackEl) return;
-  if(srcNode) return;
+  if(!AC||!trackEl||srcNode) return;
   try{
     srcNode=AC.createMediaElementSource(trackEl);
-  }catch(e){ srcNode=null; return; }
-  srcNode.connect(musicG);
+    srcNode.connect(musicG);
+  }catch(e){
+    /* if the graph refuses, fall back to the bare element so the song
+       still plays even without the mix routing */
+    srcNode=null;
+    status('&#9834; '+TRACK_TITLE+' &mdash; DIRECT');
+  }
+}
+
+function pushPlay(){
+  if(!trackEl) return;
+  var pr;
+  try{ pr=trackEl.play(); }catch(e){ return; }
+  if(pr&&typeof pr.catch==='function'){
+    pr.then(function(){
+      status('&#9834; '+TRACK_TITLE);
+    }).catch(function(err){
+      status('&#9834; BLOCKED ('+(err&&err.name?err.name:'?')+') &mdash; TAP AGAIN');
+    });
+  } else {
+    status('&#9834; '+TRACK_TITLE);
+  }
+}
+
+/* called by the coin press - this is the user gesture */
+function unlockAndPlay(){
+  if(!initAudio()) return;
+  makeTrack();
+  resumeAudio(function(){
+    audioReady=true;
+    buildMusicChain();
+    vinylStart();
+    rainStart();
+    if(!songStarted){
+      songStarted=true;
+      if(srcNode===null&&trackEl){ trackEl.volume=1; }
+      pushPlay();
+    }
+  });
 }
 
 /* ---- chip sfx ---- */
 function blip(f,dur,type,vol,to){
-  if(!AC||!soundOn) return;
+  if(!AC) return;
   var o=AC.createOscillator(),g=AC.createGain();
   o.type=type||'square'; o.frequency.setValueAtTime(f,AC.currentTime);
   if(to) o.frequency.exponentialRampToValueAtTime(Math.max(30,to),AC.currentTime+dur);
@@ -257,7 +317,7 @@ function blip(f,dur,type,vol,to){
   o.connect(g); g.connect(sfxG); o.start(); o.stop(AC.currentTime+dur+0.02);
 }
 function noise(dur,vol,f,type){
-  if(!AC||!soundOn||!noiseBuf) return;
+  if(!AC||!noiseBuf) return;
   var s=AC.createBufferSource(); s.buffer=noiseBuf;
   var fl2=AC.createBiquadFilter(); fl2.type=type||'bandpass'; fl2.frequency.value=f||900; fl2.Q.value=1.1;
   var g=AC.createGain();
@@ -278,117 +338,66 @@ var SFX={
   over:function(){[392,330,262,196].forEach(function(f,i){setTimeout(function(){blip(f,0.28,'triangle',0.24);},i*170);});},
   record:function(){[523,659,784,1047,1319].forEach(function(f,i){setTimeout(function(){blip(f,0.16,'square',0.22);},i*90);});},
   thunder:function(){noise(0.9,0.20,180,'lowpass');},
-  /* slow descending transmission tone for the dossier reveal */
   contact:function(){[1400,1100,880,660,523].forEach(function(f,i){
     setTimeout(function(){blip(f,0.30,'sine',0.20);},i*150);});
    setTimeout(function(){noise(1.1,0.10,1800,'bandpass');},120);}
 };
 
-/* ---- synth fallback ---- */
-var mus={on:false,step:0,timer:null,bpm:76,lvl:0};
-var CH=[[220,261.63,329.63],[174.61,220,261.63],[261.63,329.63,392],[196,246.94,293.66]];
-var BASS=[110,87.31,130.81,98];
-function musicTick(){
-  if(!AC||!soundOn||!mus.on) return;
-  var bar=Math.floor(mus.step/8)%4,s=mus.step%8,ch=CH[bar];
-  if(s===0||s===4){var o=AC.createOscillator(),g=AC.createGain();
-   o.type='triangle';o.frequency.value=BASS[bar];
-   g.gain.setValueAtTime(0.0001,AC.currentTime);
-   g.gain.exponentialRampToValueAtTime(0.34,AC.currentTime+0.02);
-   g.gain.exponentialRampToValueAtTime(0.0001,AC.currentTime+0.42);
-   o.connect(g);g.connect(synthG);o.start();o.stop(AC.currentTime+0.45);}
-  var pat=[0,1,2,1,0,2,1,2];
-  var og=AC.createOscillator(),gg=AC.createGain();
-  og.type='square';og.frequency.value=ch[pat[s]]*(s>=4&&mus.lvl>0.45?2:1);
-  gg.gain.setValueAtTime(0.0001,AC.currentTime);
-  gg.gain.exponentialRampToValueAtTime(0.10+mus.lvl*0.07,AC.currentTime+0.01);
-  gg.gain.exponentialRampToValueAtTime(0.0001,AC.currentTime+0.20);
-  og.connect(gg);gg.connect(synthG);og.start();og.stop(AC.currentTime+0.23);
-  if(s===0||s===3||s===6){var k=AC.createOscillator(),kg=AC.createGain();
-   k.type='sine';k.frequency.setValueAtTime(120,AC.currentTime);
-   k.frequency.exponentialRampToValueAtTime(45,AC.currentTime+0.11);
-   kg.gain.setValueAtTime(0.30,AC.currentTime);
-   kg.gain.exponentialRampToValueAtTime(0.0001,AC.currentTime+0.14);
-   k.connect(kg);kg.connect(synthG);k.start();k.stop(AC.currentTime+0.16);}
-  if(s%2===1){var hs=AC.createBufferSource();hs.buffer=noiseBuf;
-   var hf=AC.createBiquadFilter();hf.type='highpass';hf.frequency.value=6500;
-   var hg=AC.createGain();hg.gain.setValueAtTime(0.055,AC.currentTime);
-   hg.gain.exponentialRampToValueAtTime(0.0001,AC.currentTime+0.05);
-   hs.connect(hf);hf.connect(hg);hg.connect(synthG);hs.start();hs.stop(AC.currentTime+0.06);}
-  mus.step++;
-}
-function synthStart(){if(!AC||mus.on)return;mus.on=true;mus.step=0;
- mus.timer=setInterval(musicTick,(60/mus.bpm)*1000/2);}
-function synthStop(){mus.on=false;if(mus.timer){clearInterval(mus.timer);mus.timer=null;}}
+/* ---- vinyl crackle bed ---- */
+var vinBed=null,vinGain=null;
+function vinylStart(){
+  if(!AC||!noiseBuf||vinGain) return;
+  vinGain=AC.createGain(); vinGain.gain.value=0; vinGain.connect(master);
 
-/* ---- menu static bed ---- */
-var staticSrc=null,staticGain=null;
-function staticStart(){
-  if(!AC||staticSrc||!noiseBuf)return;
-  staticSrc=AC.createBufferSource();staticSrc.buffer=noiseBuf;staticSrc.loop=true;
-  var hp=AC.createBiquadFilter();hp.type='highpass';hp.frequency.value=1100;
-  var lp=AC.createBiquadFilter();lp.type='lowpass';lp.frequency.value=7200;
-  staticGain=AC.createGain();staticGain.gain.value=0.0;
-  staticSrc.connect(hp);hp.connect(lp);lp.connect(staticGain);staticGain.connect(master);
-  staticSrc.start();
+  vinBed=AC.createBufferSource(); vinBed.buffer=noiseBuf; vinBed.loop=true;
+  var bp=AC.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=520; bp.Q.value=0.55;
+  var bg=AC.createGain(); bg.gain.value=0.030;
+  vinBed.connect(bp); bp.connect(bg); bg.connect(vinGain); vinBed.start();
+
+  function pop(){
+    if(!AC||!vinGain) return;
+    var big=Math.random()<0.18;
+    var s=AC.createBufferSource(); s.buffer=noiseBuf;
+    var f=AC.createBiquadFilter();
+    f.type=big?'bandpass':'highpass';
+    f.frequency.value=big?(900+Math.random()*700):(3200+Math.random()*2600);
+    f.Q.value=big?1.6:0.7;
+    var g=AC.createGain();
+    var amp=big?(0.10+Math.random()*0.09):(0.030+Math.random()*0.045);
+    var dur=big?0.055:0.016;
+    g.gain.setValueAtTime(amp,AC.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001,AC.currentTime+dur);
+    s.connect(f); f.connect(g); g.connect(vinGain);
+    s.start(); s.stop(AC.currentTime+dur+0.02);
+    setTimeout(pop, 45+Math.random()*300);
+  }
+  pop();
 }
-function staticTo(v){
-  if(!staticGain||!AC)return;
-  staticGain.gain.setTargetAtTime(v,AC.currentTime,0.25);
-}
+function vinylTo(v){ if(vinGain) vinGain.gain.value=v; }
 
 /* ---- rain ---- */
 var rainSrc=null,rainGain=null;
 function rainStart(){
-  if(!AC||rainSrc)return;
+  if(!AC||rainSrc||!noiseBuf)return;
   rainSrc=AC.createBufferSource();rainSrc.buffer=noiseBuf;rainSrc.loop=true;
   var f=AC.createBiquadFilter();f.type='bandpass';f.frequency.value=2600;f.Q.value=0.35;
   rainGain=AC.createGain();rainGain.gain.value=0.0;
   rainSrc.connect(f);f.connect(rainGain);rainGain.connect(master);rainSrc.start();
 }
 
-/* ---- music control ---- */
-function menuMusic(){
-  if(!soundOn) return;
-  staticStart();
-  staticTo(STATIC_MENU);
-  if(usingTrack&&trackEl){
-    trackEl.volume=1;
-    if(master) master.gain.setTargetAtTime(VOL_MENU,AC.currentTime,0.2);
-    trackEl.play().catch(function(){});
-    nowp.innerHTML='&#9834; '+TRACK_TITLE;
-  }
-}
-function startTrackForGame(){
+/* ---- state mixes (direct gain sets, never ramps) ---- */
+function mixForGame(){
   inGame=true;
-  staticTo(0.0);
-  if(usingTrack&&trackEl){
-    if(master) master.gain.setTargetAtTime(soundOn?VOL_GAME:0,AC.currentTime,0.25);
-    trackEl.play().catch(function(){});
-  } else { synthStart(); }
-  if(rainGain) rainGain.gain.setTargetAtTime(0.05,AC.currentTime,0.4);
+  if(master) master.gain.value=VOL_GAME;
+  vinylTo(0);
+  if(rainGain) rainGain.gain.value=0.05;
 }
-function endTrackForGame(){
+function mixForMenu(){
   inGame=false;
-  staticStart();
-  staticTo(soundOn?STATIC_MENU:0);
-  if(usingTrack&&trackEl){
-    if(master) master.gain.setTargetAtTime(soundOn?VOL_MENU:0,AC.currentTime,0.3);
-    nowp.innerHTML='&#9834; '+TRACK_TITLE;
-  } else { synthStop(); }
-  if(rainGain) rainGain.gain.setTargetAtTime(0.0,AC.currentTime,0.5);
+  if(master) master.gain.value=VOL_MENU;
+  vinylTo(CRACKLE_MENU);
+  if(rainGain) rainGain.gain.value=0.0;
 }
-function setSound(v){
-  soundOn=v;
-  bSnd.className=v?'ab on':'ab';
-  bSnd.querySelector('.ic').innerHTML=v?'&#9834;':'&#9834;&#824;';
-  lSnd.textContent=v?'SOUND':'MUTED';
-  if(master) master.gain.value=v?(inGame?VOL_GAME:VOL_MENU):0;
-  if(staticGain) staticTo(v?(inGame?0:STATIC_MENU):0);
-  try{localStorage.setItem('pb_snd',v?'1':'0');}catch(e){}
-}
-try{if(localStorage.getItem('pb_snd')==='0')soundOn=false;}catch(e){}
-bSnd.addEventListener('click',function(e){e.stopPropagation();setSound(!soundOn);});
 
 /* ============== GAME ============== */
 var cv=document.getElementById('c'),cx=cv.getContext('2d');
@@ -410,7 +419,6 @@ if(('ontouchstart' in window)||navigator.maxTouchPoints>0)pads.style.display='bl
 var GRAV=0.62,MOVE=2.55,JUMP=-11.5,TERM=15.5,PLW=13,PLH=22;
 var SAFE=3,HURT=4.5,FATAL=6,PPM=13;
 
-/* T.S. SPECTRE is the one to beat. Two names on the board, both reachable. */
 var DEF=[{n:'T.S.SPECTRE',s:1800},{n:'ALI3N LEE',s:950}];
 
 var board=[];
@@ -430,6 +438,7 @@ var plats=[],cells=[],st='menu',cam=0,shake=0,gust=0,gustT=0,lit=0;
 var p={x:0,y:0,vx:0,vy:0,grd:false,fallY:0,falling:false,hp:100,face:1};
 var score=0,mul=1,bestMul=1,peak=0,topY=0,nextSide=0,idx=0,lives=3,respawnT=0;
 var K={l:false,r:false,j:false};
+var mlvl=0;
 function showToast(t,c){toast.textContent=t;toast.style.color=c||'#ffb84a';toast.style.opacity='1';
  setTimeout(function(){toast.style.opacity='0';},700);}
 function livesStr(){var s='';for(var i=0;i<3;i++)s+=(i<lives?'\u25CF':'\u25CB');return s;}
@@ -461,12 +470,16 @@ function respawn(){
   mul=1;respawnT=40;elHp.style.width='100%';
   SFX.life();showToast(lives+' LIVES LEFT','#ff4a4a');
 }
+
 function start(){
-  initAudio();resumeAudio();staticStart();rainStart();
-  if(usingTrack&&!srcNode) buildMusicChain();
+  /* the gesture path: unlock audio, start the song once, then play */
+  unlockAndPlay();
   SFX.coin();
-  build();st='play';ov.style.display='none';dos.style.display='none';
-  startTrackForGame();
+  build();
+  st='play';
+  ov.style.display='none';
+  dos.style.display='none';
+  mixForGame();
 }
 coin.addEventListener('click',start);
 coin.addEventListener('touchend',function(e){e.preventDefault();start();},{passive:false});
@@ -480,7 +493,6 @@ document.addEventListener('keydown',function(e){var k=e.key;
  if(k==='ArrowLeft'||k==='a'||k==='A')K.l=true;
  if(k==='ArrowRight'||k==='d'||k==='D')K.r=true;
  if(k===' '||k==='ArrowUp'||k==='w'||k==='W')K.j=true;
- if(k==='m'||k==='M')setSound(!soundOn);
  if(k===' '||k.indexOf('Arrow')===0)e.preventDefault();});
 document.addEventListener('keyup',function(e){var k=e.key;
  if(k==='ArrowLeft'||k==='a'||k==='A')K.l=false;
@@ -543,7 +555,8 @@ function showDossier(rank,fin){
 }
 
 function gameOver(){
-  st='dead';endTrackForGame();
+  st='dead';
+  mixForMenu();          /* song keeps playing, just quieter */
   var fin=Math.floor(score),ni=-1;
   for(var i=0;i<board.length;i++)if(board[i].you)delete board[i].you;
   if(board.length<5||fin>board[board.length-1].s){
@@ -558,10 +571,9 @@ function gameOver(){
    '<span style="font-size:9px;letter-spacing:2px;color:#59637a">FINAL SCORE</span><br><br>'+
    'Peak altitude <span class="k">'+Math.floor(peak)+' m</span> &nbsp; Best multiplier <span class="k">x'+bestMul.toFixed(1)+'</span>';
   drawBoard(ni);
-  coin.textContent='INSERT COIN';
+  coin.innerHTML='INSERT<br>COIN';
   blink.textContent=(ni>=0)?'THE CABINET REMEMBERS':'1 CREDIT — PRESS START';
 
-  /* rank 3 or better opens the Bureau contact screen instead */
   if(ni>=0&&(ni+1)<=DOSSIER_RANK){
     showDossier(ni+1,fin);
   } else {
@@ -581,8 +593,8 @@ function step(){
   if(K.r){ax+=MOVE;p.face=1;}
   var alt=-p.y/PPM;
   if(alt>peak){score+=(alt-peak)*mul;peak=alt;}
-  mus.lvl=Math.min(peak/260,1);
-  if(rainGain)rainGain.gain.value=0.05+mus.lvl*0.045;
+  mlvl=Math.min(peak/260,1);
+  if(rainGain)rainGain.gain.value=0.05+mlvl*0.045;
   p.vx=ax+(alt>14?gust:0);
   if(K.j&&p.grd){p.vy=JUMP;p.grd=false;p.fallY=p.y;p.falling=true;SFX.jump();}
   p.vy=Math.min(p.vy+GRAV,TERM);
@@ -671,31 +683,17 @@ function draw(){
 function loop(){pollPad();if(st==='play'){step();draw();}requestAnimationFrame(loop);}
 
 /* ---- boot ---- */
-setSound(soundOn);
-probeNext(function(name){
-  if(name){
-    foundName=name; usingTrack=true;
-    trackEl=new Audio(); trackEl.src=name; trackEl.loop=true; trackEl.preload='auto';
-    trackEl.load();
-    nowp.innerHTML='&#9834; '+TRACK_TITLE+' &mdash; TAP TO HEAR IT';
-  } else {
-    usingTrack=false;
-    nowp.innerHTML='&#9834; CHIPTUNE MODE &mdash; no audio file found';
-  }
-});
-/* first user gesture anywhere unlocks + starts the menu mix */
-function firstGesture(){
-  initAudio(); resumeAudio();
-  staticStart();
-  if(usingTrack&&!srcNode){ buildMusicChain(); }
-  if(st==='menu'||st==='dead') menuMusic();
-  document.removeEventListener('touchstart',firstGesture);
-  document.removeEventListener('mousedown',firstGesture);
-  document.removeEventListener('keydown',firstGesture);
+makeTrack();
+status('&#9834; '+TRACK_TITLE+' &mdash; PRESS THE COIN');
+
+/* a stray tap anywhere on the menu also unlocks, so the coin press
+   is never the very first gesture the browser sees */
+function primer(){
+  if(!AC){ initAudio(); }
+  resumeAudio(function(){ vinylStart(); if(!inGame) vinylTo(CRACKLE_MENU); });
 }
-document.addEventListener('touchstart',firstGesture,{passive:true});
-document.addEventListener('mousedown',firstGesture);
-document.addEventListener('keydown',firstGesture);
+document.addEventListener('touchstart',primer,{passive:true});
+document.addEventListener('mousedown',primer);
 
 build(); st='menu'; loop();
 })();
